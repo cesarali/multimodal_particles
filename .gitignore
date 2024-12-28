@@ -4,6 +4,7 @@ data/*
 general/*
 lightning_logs/*
 *:Zone.Identifier
+KEYS.txt
 
 # Byte-compiled / optimized / DLL files
 experiments/
