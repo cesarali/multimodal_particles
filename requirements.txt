@@ -1,0 +1,9 @@
+lightning
+vector
+uproot
+h5py
+fastjet
+seaborn
+rich
+scipy
+scikit-learn

@@ -1,2 +1,2 @@
-# multimodal_particles
-Generative Models for Particle Clouds
+# Multimodal-Bridges
+generative model for multimodal particle-clouds
