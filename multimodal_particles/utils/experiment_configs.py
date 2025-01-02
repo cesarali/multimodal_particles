@@ -14,7 +14,7 @@ class Configs:
             config_dict = config_source
         else:
             raise ValueError("config_source must be a file path or a dictionary")
-
+        self.config_dict = config_dict
         self._set_attributes(config_dict)  # set attributes recursively
 
         if hasattr(self, "experiment"):

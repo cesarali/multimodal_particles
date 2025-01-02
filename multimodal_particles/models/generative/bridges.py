@@ -3,7 +3,6 @@ from torch.nn.functional import softmax
 from torch.distributions import Categorical
 from dataclasses import dataclass
 
-
 class LinearUniformBridge:
     """Conditional OT Flow-Matching for continuous states.
     This bridge is a linear interpolation between boundaries states at t=0 and t=1.
@@ -38,7 +37,6 @@ class LinearUniformBridge:
         state.continuous += delta_t * heads.continuous
         state.continuous *= heads.absorbing
         return state
-
 
 class SchrodingerBridge:
     """Schrodinger bridge for continuous states
@@ -75,7 +73,6 @@ class SchrodingerBridge:
         state.continuous += delta_t * state.continuous + diffusion * delta_w
         state.continuous *= heads.absorbing
         return state
-
 
 class TelegraphBridge:
     """Multivariate Telegraph bridge for discrete states
@@ -191,7 +188,6 @@ class TelegraphBridge:
         state.discrete = state.discrete.unsqueeze(-1)
         state.discrete *= heads.absorbing
         return state
-
 
 right_shape = lambda x: x if len(x.shape) == 3 else x[:, :, None]
 right_time_size = (

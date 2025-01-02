@@ -7,3 +7,5 @@ seaborn
 rich
 scipy
 scikit-learn
+pytest
+mlflow

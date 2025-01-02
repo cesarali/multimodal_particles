@@ -4,8 +4,8 @@ import lightning as L
 from dataclasses import dataclass
 from typing import List
 
-from models.epic import MultiModalEPiC
-from bridges import LinearUniformBridge, TelegraphBridge
+from multimodal_particles.models.architectures.epic import MultiModalEPiC
+from multimodal_particles.models.generative.bridges import LinearUniformBridge, TelegraphBridge
 
 
 @dataclass
@@ -54,7 +54,7 @@ class OutputHeads:
     absorbing: torch.Tensor = None
 
 
-class AbsorbingMatching(L.LightningModule):
+class MultiModalBridgeMatching(L.LightningModule):
     """Model for hybrid data with varying size"""
 
     def __init__(self, config):

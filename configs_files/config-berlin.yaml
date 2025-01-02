@@ -1,20 +1,19 @@
 #...General experiment parameters
 experiment:
-  run_name: aoj_training
-  workdir: /home/cesarali/Multimodal-Bridges/experiments/results/AOJ
+  experiment_name: "multimodal_brige_matching"
+  experiment_indentifier: null
+  experiment_dir: null
   
 #...Data parameters
 data:
   target:
     name: AspenOpenJets
     path:
-      - /home/cesarali/Multimodal-Bridges/data/2016H_job0.h5
-      - /home/cesarali/Multimodal-Bridges/data/2016H_job1.h5
-      - /home/cesarali/Multimodal-Bridges/data/2016H_job2.h5
+      - /home/cesarali/Codes/multimodal_particles/data/2016H_job0.h5
     params:
       min_num_particles: 0
       max_num_particles: 128
-      num_jets: 100_000
+      num_jets: 1000
     preprocess:
       continuous: standardize
       discrete: tokens
@@ -44,14 +43,14 @@ data:
 
 model: 
   name: MultiModalEPiC
-  num_blocks: 10
+  num_blocks: 2
   dim:
     emb_time: 16
     emb_features_continuous: 16
     emb_features_discrete: 16
     emb_context_continuous: 0
     emb_context_discrete: 0
-    hidden_local: 128
+    hidden_local: 16
     hidden_glob: 16
 
   embedding:
@@ -87,7 +86,8 @@ pipeline:
 train:
   batch_size: 1024
   data_split_frac: [0.8, 0.2, 0.0]  # train / val / test
-  epochs: 1000
+  epochs: 200
+  gradient_clip_val: 1.0
   optimizer:
     name: AdamW
     params:
