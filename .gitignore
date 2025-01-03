@@ -3,6 +3,7 @@ results/*
 data/*
 general/*
 lightning_logs/*
+notebooks/lightning_logs/*
 *:Zone.Identifier
 KEYS.txt
 
