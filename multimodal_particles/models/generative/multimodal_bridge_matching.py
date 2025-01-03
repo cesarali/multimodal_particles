@@ -6,7 +6,7 @@ from typing import List
 
 from multimodal_particles.models.architectures.epic import MultiModalEPiC
 from multimodal_particles.models.generative.bridges import LinearUniformBridge, TelegraphBridge
-
+from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
 
 @dataclass
 class BridgeState:
@@ -46,21 +46,19 @@ class BridgeState:
             absorbing=cat_attr("absorbing"),
         )
 
-
 @dataclass
 class OutputHeads:
     continuous: torch.Tensor = None
     discrete: torch.Tensor = None
     absorbing: torch.Tensor = None
 
-
 class MultiModalBridgeMatching(L.LightningModule):
     """Model for hybrid data with varying size"""
 
-    def __init__(self, config):
+    def __init__(self, config:MultimodalBridgeMatchingConfig):
         super().__init__()
         self.config = config
-        self.vocab_size = config.data.vocab_size.features
+        self.vocab_size = config.vocab_size_features
 
         self.encoder = MultiModalEPiC(config)
 
@@ -131,10 +129,6 @@ class MultiModalBridgeMatching(L.LightningModule):
         loss_ce = self.loss_discrete_fn(logits, targets) * mask
         return loss_ce.sum() / mask.sum()
 
-    def loss_absorbing(self, heads: OutputHeads, batch):
-        # TODO
-        pass
-
     def reshape_time(self, t, x):
         if isinstance(t, (float, int)):
             return t
@@ -169,8 +163,8 @@ class MultiModalBridgeMatching(L.LightningModule):
         """generates target data from source data using trained dynamics"""
         time_steps = torch.linspace(
             0.0,
-            1.0 - self.config.pipeline.time_eps,
-            self.config.pipeline.num_timesteps,
+            1.0 - self.config.pipeline["time_eps"],
+            self.config.pipeline["num_timesteps"],
             device=self.device,
         )
         delta_t = (time_steps[-1] - time_steps[0]) / (len(time_steps) - 1)
@@ -191,12 +185,12 @@ class MultiModalBridgeMatching(L.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
-            self.parameters(), lr=self.config.train.optimizer.params.lr
+            self.parameters(), lr=self.config.train.lr
         )
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
-            T_max=self.config.train.scheduler.params.T_max,
-            eta_min=self.config.train.scheduler.params.eta_min,
-            last_epoch=self.config.train.scheduler.params.last_epoch,
+            T_max=self.config.train.scheduler_params["T_max"],
+            eta_min=self.config.train.scheduler_params["eta_min"],
+            last_epoch=self.config.train.scheduler_params["last_epoch"],
         )
         return [optimizer], [scheduler]

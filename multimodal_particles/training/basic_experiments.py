@@ -3,18 +3,17 @@ import yaml
 from typing import List
 from dataclasses import asdict
 from multimodal_particles import results_path
-from lightning.pytorch import Trainer
 
+import lightning.pytorch as pl
+from lightning.pytorch import Trainer
 from lightning.pytorch.loggers import MLFlowLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
 
-from multimodal_particles.utils.dataloader import DataloaderModule 
 from multimodal_particles.utils.experiment_files import ExperimentsFiles
+from multimodal_particles.data.particle_clouds.dataloader import MultimodalBridgeDataloaderModule 
 from multimodal_particles.models.generative.multimodal_bridge_matching import MultiModalBridgeMatching
-import lightning.pytorch as pl
 
 from abc import ABC, abstractmethod
-
 
 class BasicLightningExperiment(ABC):
     """
@@ -23,7 +22,7 @@ class BasicLightningExperiment(ABC):
     """
     experiment_name: str = ""
     experiment_files: ExperimentsFiles
-    datamodule: DataloaderModule
+    datamodule: MultimodalBridgeDataloaderModule
     model: MultiModalBridgeMatching
     set_to_train: bool = False
     logger: MLFlowLogger = None
@@ -89,10 +88,10 @@ class BasicLightningExperiment(ABC):
             accelerator="gpu",
             devices=[0],
             logger=self.logger,
-            max_epochs=self.config.train.epochs,
+            max_epochs=self.config.model.train.epochs,
             callbacks=self.callbacks,
             log_every_n_steps=1,
-            gradient_clip_val=self.config.train.gradient_clip_val
+            gradient_clip_val=self.config.model.train.gradient_clip_val
         )
         if isinstance(self.datamodule,pl.LightningDataModule):
             trainer.fit(self.model, datamodule=self.datamodule)

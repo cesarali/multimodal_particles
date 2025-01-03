@@ -1,43 +1,44 @@
 import torch
 import math
 from torch import nn
-
+from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
 
 class InputEmbeddings(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config:MultimodalBridgeMatchingConfig):
         super(InputEmbeddings, self).__init__()
 
         # ...dimensions:
-        dim_features_continuous = config.data.dim.features_continuous
-        dim_features_discrete = config.data.dim.features_discrete
-        dim_context_continuous = config.data.dim.context_continuous
-        dim_context_discrete = config.data.dim.context_discrete
+        dim_features_continuous = config.dim_features_continuous
+        dim_features_discrete = config.dim_features_discrete
+        dim_context_continuous = config.dim_context_continuous
+        dim_context_discrete = config.dim_context_discrete
+
 
         # ...vocab sizes for discrete data:
-        vocab_size = config.data.vocab_size.features
-        vocab_size_context = config.data.vocab_size.context
+        vocab_size = config.vocab_size_features
+        vocab_size_context = config.vocab_size_context
 
         # ...embedding types:
-        embed_type_time = config.model.embedding.time
-        embed_type_features_continuous = config.model.embedding.features_continuous
-        embed_type_features_discrete = config.model.embedding.features_discrete
-        embed_type_context_continuous = config.model.embedding.context_continuous
-        embed_type_context_discrete = config.model.embedding.context_discrete
+        embed_type_time = config.encoder.time_embedding
+        embed_type_features_continuous = config.encoder.features_continuous_embedding
+        embed_type_features_discrete = config.encoder.features_discrete_embedding
+        embed_type_context_continuous = config.encoder.context_continuous_embedding
+        embed_type_context_discrete = config.encoder.context_discrete_embedding
 
         # ...embedding dimensions:
-        dim_time_emb = config.model.dim.emb_time
+        dim_time_emb = config.encoder.emb_time
         dim_features_continuous_emb = (
-            config.model.dim.emb_features_continuous
-            if config.model.dim.emb_features_continuous
+            config.encoder.emb_features_continuous
+            if config.encoder.emb_features_continuous
             else dim_features_continuous
         )
-        dim_features_discrete_emb = config.model.dim.emb_features_discrete
+        dim_features_discrete_emb = config.encoder.emb_features_discrete
         dim_context_continuous_emb = (
-            config.model.dim.emb_context_continuous
-            if config.model.dim.emb_context_continuous
+            config.encoder.emb_context_continuous
+            if config.encoder.emb_context_continuous
             else dim_context_continuous
         )
-        dim_context_discrete_emb = config.model.dim.emb_context_discrete
+        dim_context_discrete_emb = config.encoder.emb_context_discrete
 
         # ...Time embeddings:
 

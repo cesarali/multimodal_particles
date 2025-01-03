@@ -3,17 +3,87 @@ import yaml
 import random
 from datetime import datetime
 
+import yaml
+from types import SimpleNamespace
+from dataclasses import is_dataclass
+
+def namespace_to_dict(obj):
+    """
+    Recursively converts a SimpleNamespace or dataclass object (or a list of these) back into a dictionary (or a list of dictionaries).
+    """
+    if is_dataclass(obj):
+        return {k: namespace_to_dict(v) for k, v in obj.__dict__.items()}
+    elif isinstance(obj, SimpleNamespace):
+        return {k: namespace_to_dict(v) for k, v in obj.__dict__.items()}
+    elif isinstance(obj, list):
+        return [namespace_to_dict(item) for item in obj]
+    else:
+        return obj
+
+def dict_to_yaml(dict_obj, output_path):
+    """
+    Converts a dictionary to a YAML string and optionally saves it to a file.
+    
+    Parameters:
+        dict_obj (dict): The dictionary to convert to YAML.
+        output_path (str): The path to the file where the YAML string should be saved.
+        
+    Returns:
+        str: The YAML string representation of the dictionary.
+    """
+    yaml_str = yaml.dump(dict_obj, default_flow_style=False)
+    with open(output_path, 'w') as f:
+        f.write(yaml_str)
+    return yaml_str
+
+def yaml_to_namespace(data):
+    """
+    Recursively converts a dictionary into a nested SimpleNamespace object.
+    """
+    if isinstance(data, dict):
+        return SimpleNamespace(**{k: yaml_to_namespace(v) for k, v in data.items()})
+    elif isinstance(data, list):
+        return [yaml_to_namespace(item) for item in data]
+    else:
+        return data
+
+def load_config(config_source):
+    """
+    Loads the YAML configuration from a file or dictionary and converts it to a nested object.
+    
+    Parameters:
+        config_source (str | dict): Path to the YAML file or a dictionary representing the configuration.
+    
+    Returns:
+        SimpleNamespace: Nested namespace object representing the configuration.
+    """
+    if isinstance(config_source, str):
+        # Read from file
+        with open(config_source, "r") as f:
+            config_dict = yaml.safe_load(f)
+    elif isinstance(config_source, dict):
+        # Directly use provided dictionary
+        config_dict = config_source
+    else:
+        raise ValueError("config_source must be a file path (str) or a dictionary")
+
+    return yaml_to_namespace(config_dict)
 
 class Configs:
     def __init__(self, config_source):
         if isinstance(config_source, str):
             with open(config_source, "r") as f:
                 config_dict = yaml.safe_load(f)
-
         elif isinstance(config_source, dict):
             config_dict = config_source
         else:
             raise ValueError("config_source must be a file path or a dictionary")
+        
+        self.dynamics = None
+        self.experiment = None
+        self.data = None
+        self.pipeline = None
+
         self.config_dict = config_dict
         self._set_attributes(config_dict)  # set attributes recursively
 

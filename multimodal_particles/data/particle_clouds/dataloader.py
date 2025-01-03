@@ -3,9 +3,9 @@ import numpy as np
 from torch.utils.data import DataLoader, Subset
 from torch.utils.data import Dataset
 from collections import namedtuple
+from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
 
-
-class DataSetModule(Dataset):
+class MultimodalBridgeDataset(Dataset):
     def __init__(self, data):
         self.data = data
         self.attributes = []
@@ -61,20 +61,20 @@ class DataSetModule(Dataset):
             yield self[idx]
 
 
-class DataloaderModule:
+class MultimodalBridgeDataloaderModule:
     def __init__(
         self, config, dataclass, batch_size: int = None, data_split_frac: tuple = None
     ):
         self.dataclass = dataclass
         self.config = config
-        self.dataset = DataSetModule(dataclass)
+        self.dataset = MultimodalBridgeDataset(dataclass)
         self.data_split = (
-            self.config.train.data_split_frac
+            self.config.model.train.data_split_frac
             if data_split_frac is None
             else data_split_frac
         )
         self.batch_size = (
-            self.config.train.batch_size if batch_size is None else batch_size
+            self.config.model.train.batch_size if batch_size is None else batch_size
         )
         self.dataloader()
 
@@ -129,3 +129,48 @@ class DataloaderModule:
                 len(self.test.dataset if test is not None else []),
             )
         )
+
+    @staticmethod
+    def random_databatch(config):
+        """
+        For testing this generates a random databatch with the expected 
+        properties of the config, without the need of loading data and 
+        should adapt from config only.
+        """
+
+        # Define the namedtuple
+        ParticleData = namedtuple('ParticleData', [
+            'source_continuous',
+            'source_discrete',
+            'source_mask',
+            'target_continuous',
+            'target_discrete',
+            'target_mask'
+        ])
+        batch_size = config.model.train.batch_size
+        max_num_particles = config.data.target.params.max_num_particles
+        dim_continuous = config.data.dim.features_continuous
+        dim_discrete = config.data.dim.features_discrete
+        vocab_size = config.data.vocab_size.features
+
+        # Create the namedtuple object with random torch.Tensors
+        particle_data = ParticleData(
+            source_continuous=torch.rand(batch_size, max_num_particles, dim_continuous),
+            source_discrete=torch.randint(0, vocab_size, (batch_size, max_num_particles, dim_discrete)),
+            source_mask=torch.randint(0, 2, (batch_size, max_num_particles, 1)),
+            target_continuous=torch.rand(batch_size, max_num_particles, dim_continuous),
+            target_discrete=torch.rand(batch_size, max_num_particles, dim_discrete),
+            target_mask=torch.randint(0, 2, (batch_size, max_num_particles, 1))
+        )
+        return particle_data
+    
+    @staticmethod
+    def update_model_config(full_config,model_config:MultimodalBridgeMatchingConfig):        
+        model_config.dim_features_continuous = full_config.data.dim.features_continuous
+        model_config.dim_features_discrete = full_config.data.dim.features_discrete
+        model_config.dim_context_continuous = full_config.data.dim.context_continuous
+        model_config.dim_context_discrete = full_config.data.dim.context_discrete
+
+        model_config.vocab_size_features = full_config.data.vocab_size.features
+        model_config.vocab_size_context = full_config.data.vocab_size.context
+        return model_config

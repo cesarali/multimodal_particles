@@ -2,6 +2,7 @@ import torch
 from torch.nn.functional import softmax
 from torch.distributions import Categorical
 from dataclasses import dataclass
+from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
 
 class LinearUniformBridge:
     """Conditional OT Flow-Matching for continuous states.
@@ -14,8 +15,8 @@ class LinearUniformBridge:
       - z: delta function regularizer
     """
 
-    def __init__(self, config: dataclass):
-        self.sigma = config.dynamics.params.sigma
+    def __init__(self, config: MultimodalBridgeMatchingConfig):
+        self.sigma = config.bridge_params["sigma"]
 
     def sample(self, t, x0, x1):
         x = t * x1 + (1.0 - t) * x0
@@ -48,8 +49,8 @@ class SchrodingerBridge:
       - z: noise
     """
 
-    def __init__(self, config: dataclass):
-        self.sigma = config.dynamics.params.sigma
+    def __init__(self, config: MultimodalBridgeMatchingConfig):
+        self.sigma = config.bridge_params["sigma"]
 
     def sample(self, t, x0, x1):
         x = t * x1 + (1.0 - t) * x0
@@ -82,10 +83,10 @@ class TelegraphBridge:
     - k: discrete state at time t
     """
 
-    def __init__(self, config: dataclass):
-        self.gamma = config.dynamics.params.gamma
-        self.time_epsilon = config.pipeline.time_eps
-        self.vocab_size = config.data.vocab_size.features
+    def __init__(self, config: MultimodalBridgeMatchingConfig):
+        self.gamma = config.bridge_params["gamma"]
+        self.time_epsilon = config.pipeline["time_eps"]
+        self.vocab_size = config.vocab_size_features
 
     def sample(self, t, k0, k1):
         transition_probs = self.transition_probability(t, k0, k1)

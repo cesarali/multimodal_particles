@@ -5,17 +5,19 @@ from torch.nn import functional as F
 import torch.nn.utils.weight_norm as weight_norm
 
 from multimodal_particles.models.architectures.utils import InputEmbeddings
+from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
 
 class MultiModalEPiC(nn.Module):
     """Permutation equivariant architecture for multi-modal continuous-discrete models"""
 
-    def __init__(self, config):
+    def __init__(self, config:MultimodalBridgeMatchingConfig):
         super().__init__()
-        self.dim_features_continuous = config.data.dim.features_continuous
-        self.dim_features_discrete = config.data.dim.features_discrete
-        self.vocab_size = config.data.vocab_size.features
+        self.dim_features_continuous = config.dim_features_continuous
+        self.dim_features_discrete = config.dim_features_discrete
+        self.vocab_size = config.vocab_size_features
+
         self.epic = EPiC(config)
-        self.add_discrete_head = config.model.add_discrete_head
+        self.add_discrete_head = config.encoder.add_discrete_head
         if self.add_discrete_head:
             self.fc_layer = nn.Sequential(
                 nn.Linear(
@@ -52,30 +54,29 @@ class EPiC(nn.Module):
         - context: context features of shape (b, dim_context)
         - mask: binary mask of shape (b, n, 1) indicating valid particles (1) or masked particles (0)
     """
-
-    def __init__(self, config):
+    def __init__(self, config:MultimodalBridgeMatchingConfig):
         super().__init__()
 
         # ...data dimensions:
-        self.dim_features_continuous = config.data.dim.features_continuous
-        self.dim_features_discrete = config.data.dim.features_discrete
-        dim_context_continuous = config.data.dim.context_continuous
-        self.vocab_size = config.data.vocab_size.features
+        self.dim_features_continuous = config.dim_features_continuous
+        self.dim_features_discrete = config.dim_features_discrete
+        dim_context_continuous = config.dim_context_continuous
+        self.vocab_size = config.vocab_size_features
 
         # ...embedding dimensions:
-        dim_time_emb = config.model.dim.emb_time
+        dim_time_emb = config.encoder.emb_time
         dim_features_continuous_emb = (
-            config.model.dim.emb_features_continuous
-            if config.model.dim.emb_features_continuous
+            config.encoder.emb_features_continuous
+            if config.encoder.emb_features_continuous
             else self.dim_features_continuous
         )
-        dim_features_discrete_emb = config.model.dim.emb_features_discrete
+        dim_features_discrete_emb = config.encoder.emb_features_discrete
         dim_context_continuous_emb = (
-            config.model.dim.emb_context_continuous
-            if config.model.dim.emb_context_continuous
+            config.encoder.emb_context_continuous
+            if config.encoder.emb_context_continuous
             else dim_context_continuous
         )
-        dim_context_discrete_emb = config.model.dim.emb_context_discrete
+        dim_context_discrete_emb = config.encoder.emb_context_discrete
 
         # ...components:
         self.embedding = InputEmbeddings(config)
@@ -88,10 +89,10 @@ class EPiC(nn.Module):
             dim_context=dim_time_emb
             + dim_context_continuous_emb
             + dim_context_discrete_emb,
-            num_blocks=config.model.num_blocks,
-            dim_hidden_local=config.model.dim.hidden_local,
-            dim_hidden_global=config.model.dim.hidden_glob,
-            use_skip_connection=config.model.skip_connection,
+            num_blocks=config.encoder.num_blocks,
+            dim_hidden_local=config.encoder.hidden_local,
+            dim_hidden_global=config.encoder.hidden_glob,
+            use_skip_connection=config.encoder.skip_connection,
         )
 
     def forward(

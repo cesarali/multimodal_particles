@@ -20,8 +20,8 @@ class JetDataclass:
 
     def __init__(self, config):
         self.config = config
-        kwargs_target = config.data.target.params.to_dict()
-        kwargs_source = config.data.source.params.to_dict()
+        kwargs_target = config.data.target.params.__dict__
+        kwargs_source = config.data.source.params.__dict__
 
         # ...target:
 
