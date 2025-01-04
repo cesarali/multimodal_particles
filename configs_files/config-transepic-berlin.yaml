@@ -1,0 +1,127 @@
+augment_kwargs:
+  aniso: 1
+  class_name: training.augment.AugmentPipe
+  p: 0.12
+  rotate_frac: 1
+  scale: 1
+  translate_frac: 1
+  xflip: 100000000.0
+  yflip: 1
+batch_gpu: null
+batch_size: 64
+cudnn_benchmark: true
+data_loader_kwargs:
+  num_workers: 8
+  pin_memory: true
+  prefetch_factor: 2
+dataset_kwargs:
+  atom_type_norm: 0.25
+  charge_norm: 10.0
+  class_name: training.dataset.QM9Dataset
+  condition_on_alpha: true
+  only_second_half: true
+  pos_norm: 1.0
+  random_rotation: false
+  shuffle_node_ordering: true
+  subset: -1
+  train_or_valid: train
+device: cuda
+distributed: false
+ema_halflife_kimg: 500
+encoder:
+  activation: SELU
+  add_discrete_head: true
+  context_continuous_embedding: null
+  context_discrete_embedding: null
+  dropout: 0.1
+  emb_context_continuous: 0
+  emb_context_discrete: 0
+  emb_features_continuous: 16
+  emb_features_discrete: 16
+  emb_time: 16
+  features_continuous_embedding: Linear
+  features_discrete_embedding: Embedding
+  hidden_glob: 16
+  hidden_local: 16
+  name: MultiModalEPiC
+  num_blocks: 2
+  skip_connection: true
+  time_embedding: SinusoidalPositionalEncoding
+grad_conditioner_kwargs:
+  class_name: training.grad_conditioning.MoleculeJump
+  grad_norm_clip: 1.0
+  lr_rampup_kimg: 320
+just_visualize: false
+kimg_per_tick: 50
+log_img_ticks: 50
+loss_kwargs:
+  auto_loss_weight: 1.0
+  class_name: training.loss.JumpLossFinalDim
+  loss_type: eps
+  mean_or_sum_over_dim: mean
+  min_t: 0.001
+  nearest_atom_loss_weight: 1.0
+  nearest_atom_pred: true
+  noise_schedule_name: vp_sde
+  rate_cut_t: 0.1
+  rate_function_name: step
+  rate_loss_weight: 1.0
+  score_loss_weight: 1.0
+  vp_sde_beta_max: 20.0
+  vp_sde_beta_min: 0.1
+  x0_logit_ce_loss_weight: 1.0
+loss_scaling: 1.0
+optimizer_kwargs:
+  betas:
+  - 0.9
+  - 0.999
+  class_name: torch.optim.Adam
+  eps: 1.0e-08
+  lr: 3.0e-05
+run_dir: ''
+sampler_kwargs:
+  class_name: training.sampler.JumpSampler
+  condition_sweep_idx: 0
+  condition_sweep_path: null
+  condition_type: sweep
+  corrector_finish_time: 0.003
+  corrector_snr: 0.1
+  corrector_start_time: 0.1
+  corrector_steps: 0
+  do_conditioning: false
+  do_jump_back: false
+  do_jump_corrector: false
+  dt: 0.001
+  dt_schedule: uniform
+  dt_schedule_h: 0.001
+  dt_schedule_l: 0.001
+  dt_schedule_tc: 0.5
+  guidance_weight: 1.0
+  jump_back_start_time: 0.5
+  no_noise_final_step: false
+  sample_near_atom: true
+seed: 2047813205
+snapshot_ticks: 25
+state_dump_ticks: 25
+structure_kwargs:
+  exist:
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  observed:
+  - 0
+  - 0
+  - 0
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+total_kimg: 200000

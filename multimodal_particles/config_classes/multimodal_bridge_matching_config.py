@@ -1,7 +1,6 @@
 import json
 import yaml
 from dataclasses import dataclass, field,asdict
-from typing import Optional, Dict
 from typing import Optional, Dict, List, Union
 
 @dataclass
@@ -56,6 +55,8 @@ class MultimodalBridgeMatchingConfig:
     dim_context_discrete: int = 0
     vocab_size_features: int = 8
     vocab_size_context: int = 0
+
+    
     encoder: EncoderConfig = field(default_factory=EncoderConfig)
     pipeline: Dict[str, float] = field(default_factory=lambda: {
         "method": "EulerLeapingSolver",

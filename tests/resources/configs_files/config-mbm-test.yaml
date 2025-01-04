@@ -1,0 +1,95 @@
+#...General experiment parameters
+experiment:
+  type: multimodal
+  experiment_name: multimodal_brige_matching
+  experiment_indentifier: null
+  experiment_dir: null
+  
+#...Data parameters
+data:
+  target:
+    name: AspenOpenJets
+    path:
+      - /home/cesarali/Codes/multimodal_particles/data/2016H_job0.h5 # change to resource data test
+    params:
+      min_num_particles: 0
+      max_num_particles: 128
+      num_jets: 1000
+    preprocess:
+      continuous: standardize
+      discrete: tokens
+  source: 
+    name: GaussNoise
+    path: null
+    params:
+      scale: 1.0
+      min_num_particles: 0
+      max_num_particles: 128
+    preprocess:
+      continuous: null
+      discrete: tokens
+  dim:
+    features_continuous: 3             # pt, eta_rel, phi_phi
+    features_discrete: 1               # flavor x charge
+    context_continuous: 0
+    context_discrete: 0      
+  vocab_size: 
+    features: 8 
+    context: 0  
+
+#...Dynamics parameters
+model:
+  
+  bridge_continuous: LinearUniformBridge
+  bridge_discrete: TelegraphBridge
+  bridge_params:
+    sigma: 0.0001
+    gamma: 0.125
+  dim_features_continuous: 3             # pt, eta_rel, phi_phi
+  dim_features_discrete: 1               # flavor x charge
+  dim_context_continuous: 0
+  dim_context_discrete: 0      
+  vocab_size_features: 8 
+  vocab_size_context: 0  
+  encoder: 
+    name: MultiModalEPiC
+    num_blocks: 2
+    emb_time: 16
+    emb_features_continuous: 16
+    emb_features_discrete: 16
+    emb_context_continuous: 0
+    emb_context_discrete: 0
+    hidden_local: 16
+    hidden_glob: 16
+    time_embedding: SinusoidalPositionalEncoding
+    features_continuous_embedding: Linear
+    features_discrete_embedding: Embedding
+    context_continuous_embedding: null
+    context_discrete_embedding: null
+    skip_connection: true
+    dropout: 0.1
+    activation: SELU
+    add_discrete_head: true
+  pipeline:
+    method: EulerLeapingSolver
+    num_timesteps: 1000
+    time_eps: 0.0001
+  #...Training parameters
+  train:
+    batch_size: 64
+    data_split_frac: [0.8, 0.2, 0.0]  # train / val / test
+    epochs: 200
+    gradient_clip_val: 1.0
+    optimizer_name: AdamW
+    lr: 0.001
+    weight_decay: 5.0e-5
+    betas: [0.9, 0.999]
+    eps: 1.e-8
+    amsgrad: false
+    scheduler_name: CosineAnnealingLR
+    scheduler_params: 
+      T_max: 1000
+      eta_min: 5.0e-5
+      last_epoch: -1
+
+

@@ -2,7 +2,7 @@ import os
 import yaml
 from typing import List
 from dataclasses import asdict
-from multimodal_particles import results_path
+from multimodal_particles import results_dir
 
 import lightning.pytorch as pl
 from lightning.pytorch import Trainer
@@ -60,7 +60,7 @@ class BasicLightningExperiment(ABC):
         """
         Sets up the logger for MLFlow.
         """
-        ml_flow_folder = os.path.join(results_path, "mlruns")
+        ml_flow_folder = os.path.join(results_dir, "mlruns")
         self.logger = MLFlowLogger(experiment_name=self.experiment_name,
                                    tracking_uri=f"file:{ml_flow_folder}")
 

@@ -20,10 +20,10 @@ class ExperimentsFiles:
         - parametes yamls
         - plot path
     """
-    def __init__(self,experiment_dir=None,experiment_indentifier=None,delete=False,results_path=None):
-        if results_path is None:
-            from multimodal_particles import results_path
-        self.results_path = results_path
+    def __init__(self,experiment_dir=None,experiment_indentifier=None,delete=False,results_dir=None):
+        if results_dir is None:
+            from multimodal_particles import results_dir
+        self.results_path = results_dir
         self.delete = delete
         self.define_experiment_folder(experiment_dir,experiment_indentifier)
         self._create_directories()
