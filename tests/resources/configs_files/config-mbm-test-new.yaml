@@ -9,9 +9,7 @@ experiment:
 data:
   target_name: AspenOpenJets
   target_path:
-      - /home/df630/CMB/data/AOJ/2016H_job0.h5
-      # - /home/df630/CMB/data/AOJ/2016H_job1.h5
-      # - /home/df630/CMB/data/AOJ/2016H_job2.h5
+      - /home/df630/multimodal_particles/tests/resources/2016H_job0_mini.h5
   target_preprocess_continuous: standardize
   target_preprocess_discrete: tokens
   source_name: GaussNoise
