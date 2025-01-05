@@ -78,7 +78,7 @@ class MultiModalBridgeMatching(L.LightningModule):
     def __init__(self, config:MultimodalBridgeMatchingConfig):
         super().__init__()
         self.config = config
-        self.vocab_size = config.vocab_size_features
+        self.vocab_size = config.data.vocab_size_features
 
         self.encoder = MultiModalEPiC(config)
 
@@ -162,8 +162,8 @@ class MultiModalBridgeMatching(L.LightningModule):
         """
         time_steps = torch.linspace(
             0.0,
-            1.0 - self.config.model.pipeline.time_eps,
-            self.config.model.pipeline.num_timesteps,
+            1.0 - self.config.bridge.time_eps,
+            self.config.bridge.num_timesteps,
             device=self.device,
         )
         delta_t = (time_steps[-1] - time_steps[0]) / (len(time_steps) - 1)

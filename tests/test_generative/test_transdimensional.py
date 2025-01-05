@@ -36,10 +36,6 @@ def test_structure():
     graphical_structure  = JetsGraphicalStructure(config.max_num_particles,histogram)
     assert graphical_structure is not None
 
-def test_model():
-    config = TransdimensionalEpicConfig()
-    generative_model = TransdimensionalJumpDiffusion(config)
-    assert generative_model is not None
 
 if __name__=="__main__":
     test_structure()

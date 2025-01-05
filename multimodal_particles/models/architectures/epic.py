@@ -10,11 +10,11 @@ from multimodal_particles.config_classes.multimodal_bridge_matching_config impor
 class MultiModalEPiC(nn.Module):
     """Permutation equivariant architecture for multi-modal continuous-discrete models"""
 
-    def __init__(self, config:MultimodalBridgeMatchingConfig):
+    def __init__(self, config: MultimodalBridgeMatchingConfig):
         super().__init__()
-        self.dim_features_continuous = config.dim_features_continuous
-        self.dim_features_discrete = config.dim_features_discrete
-        self.vocab_size = config.vocab_size_features
+        self.dim_features_continuous = config.data.dim_features_continuous
+        self.dim_features_discrete = config.data.dim_features_discrete
+        self.vocab_size = config.data.vocab_size_features
 
         self.epic = EPiC(config)
         self.add_discrete_head = config.encoder.add_discrete_head
@@ -54,29 +54,29 @@ class EPiC(nn.Module):
         - context: context features of shape (b, dim_context)
         - mask: binary mask of shape (b, n, 1) indicating valid particles (1) or masked particles (0)
     """
-    def __init__(self, config:MultimodalBridgeMatchingConfig):
+    def __init__(self, config: MultimodalBridgeMatchingConfig):
         super().__init__()
 
         # ...data dimensions:
-        self.dim_features_continuous = config.dim_features_continuous
-        self.dim_features_discrete = config.dim_features_discrete
-        dim_context_continuous = config.dim_context_continuous
-        self.vocab_size = config.vocab_size_features
+        self.dim_features_continuous = config.data.dim_features_continuous
+        self.dim_features_discrete = config.data.dim_features_discrete
+        dim_context_continuous = config.data.dim_context_continuous
+        self.vocab_size = config.data.vocab_size_features
 
         # ...embedding dimensions:
-        dim_time_emb = config.encoder.emb_time
+        dim_time_emb = config.encoder.dim_emb_time
         dim_features_continuous_emb = (
-            config.encoder.emb_features_continuous
-            if config.encoder.emb_features_continuous
+            config.encoder.dim_emb_features_continuous
+            if config.encoder.dim_emb_features_continuous
             else self.dim_features_continuous
         )
-        dim_features_discrete_emb = config.encoder.emb_features_discrete
+        dim_features_discrete_emb = config.encoder.dim_emb_features_discrete
         dim_context_continuous_emb = (
-            config.encoder.emb_context_continuous
-            if config.encoder.emb_context_continuous
+            config.encoder.dim_emb_context_continuous
+            if config.encoder.dim_emb_context_continuous
             else dim_context_continuous
         )
-        dim_context_discrete_emb = config.encoder.emb_context_discrete
+        dim_context_discrete_emb = config.encoder.dim_emb_context_discrete
 
         # ...components:
         self.embedding = InputEmbeddings(config)
@@ -90,8 +90,8 @@ class EPiC(nn.Module):
             + dim_context_continuous_emb
             + dim_context_discrete_emb,
             num_blocks=config.encoder.num_blocks,
-            dim_hidden_local=config.encoder.hidden_local,
-            dim_hidden_global=config.encoder.hidden_glob,
+            dim_hidden_local=config.encoder.dim_hidden_local,
+            dim_hidden_global=config.encoder.dim_hidden_glob,
             use_skip_connection=config.encoder.skip_connection,
         )
 

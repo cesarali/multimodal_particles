@@ -9,7 +9,7 @@ experiment:
 data:
   target_name: AspenOpenJets
   target_path:
-      - /home/cesarali/Codes/multimodal_particles/data/2016H_job0.h5
+      - /home/df630/CMB/data/AOJ/2016H_job0.h5
       # - /home/df630/CMB/data/AOJ/2016H_job1.h5
       # - /home/df630/CMB/data/AOJ/2016H_job2.h5
   target_preprocess_continuous: standardize

@@ -72,12 +72,12 @@ class MultimodalBridgeDataloaderModule:
         self.dataset = MultimodalBridgeDataset(dataclass)
 
         self.data_split = (
-            self.config.model.train.data_split_frac
+            self.config.train.data_split_frac
             if data_split_frac is None
             else data_split_frac
         )
         self.batch_size = (
-            self.config.model.train.batch_size if batch_size is None else batch_size
+            self.config.train.batch_size if batch_size is None else batch_size
         )
         self.dataloader()
 
@@ -150,11 +150,11 @@ class MultimodalBridgeDataloaderModule:
             'target_discrete',
             'target_mask'
         ])
-        batch_size = config.model.train.batch_size
-        max_num_particles = config.data.target.params.max_num_particles
-        dim_continuous = config.data.dim.features_continuous
-        dim_discrete = config.data.dim.features_discrete
-        vocab_size = config.data.vocab_size.features
+        batch_size = config.train.batch_size
+        max_num_particles = config.data.max_num_particles
+        dim_continuous = config.data.dim_features_continuous
+        dim_discrete = config.data.dim_features_discrete
+        vocab_size = config.data.vocab_size_features
 
         # Create the namedtuple object with random torch.Tensors
         particle_data = ParticleData(

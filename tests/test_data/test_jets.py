@@ -9,15 +9,20 @@ from multimodal_particles.models.generative.multimodal_bridge_matching import Mu
 from multimodal_particles.utils.experiment_configs import namespace_to_dict,dict_to_yaml
 from multimodal_particles import test_resources_dir
 
-@pytest.mark.skip(reason="Skipping this test since it loads data")
+def test_configs():
+    config_file_path = os.path.join(test_resources_dir, "configs_files", "config-mbm-test.yaml")
+    model_config = MultimodalBridgeMatchingConfig.from_yaml(config_file_path)
+    assert model_config is not None
+
 def test_databatch():
     #obtain configs
     config_file_path = os.path.join(test_resources_dir, "configs_files", "config-mbm-test.yaml")
-    full_config = load_config(config_file_path)
+    model_config = MultimodalBridgeMatchingConfig.from_yaml(config_file_path)
+    
     # create datamodule
-    jets = JetDataclass(config=full_config)
+    jets = JetDataclass(config=model_config)
     jets.preprocess()
-    dataloader = MultimodalBridgeDataloaderModule(config=full_config, dataclass=jets)
+    dataloader = MultimodalBridgeDataloaderModule(config=model_config, dataclass=jets)
     
     databatch = next(dataloader.train.__iter__())
     assert databatch is not None

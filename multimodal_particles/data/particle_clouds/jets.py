@@ -20,77 +20,63 @@ class JetDataclass:
 
     def __init__(self, config):
         self.config = config
-        kwargs_target = config.data.target.params.__dict__
-        kwargs_source = config.data.source.params.__dict__
-
-        # ...target:
+        kwargs = config.data.__dict__
+        
+        #...define source and target:
 
         self.target = ParticleClouds(
-            dataset=config.data.target.name,
-            data_paths=getattr(config.data.target, "path", None),
-            **kwargs_target,
+            dataset=config.data.target_name,
+            data_paths=getattr(config.data, "target_path", None),
+            **kwargs,
         )
 
-        # ... noise source:
-
-        kwargs_source["set_masks_like"] = (
-            self.target.multiplicity
-            if config.data.target.params.max_num_particles
-            > config.data.target.params.min_num_particles
-            else None
-        )
-
-        kwargs_source["num_jets"] = getattr(
-            config.data.source.params, "num_jets", len(self.target)
-        )
+        kwargs["target_multiplicity"] = self.target.multiplicity if config.data.source_masks_from_target_masks else None
 
         self.source = ParticleClouds(
-            dataset=config.data.source.name,
-            data_paths=getattr(config.data.source, "path", None),
-            **kwargs_source,
+            dataset=config.data.source_name,
+            data_paths=getattr(config.data, "source_path", None),
+            **kwargs,
         )
 
     def preprocess(self, source_stats=None, target_stats=None):
-        if hasattr(self.config.data.source, "preprocess"):
-            self.source.preprocess(
-                output_continuous=self.config.data.source.preprocess.continuous,
-                output_discrete=self.config.data.source.preprocess.discrete,
-                stats=source_stats,
-            )
-            self.config.data.source.preprocess.stats = (
-                self.source.stats if hasattr(self.source, "stats") else target_stats
-            )
-        if hasattr(self.config.data.target, "preprocess"):
-            self.target.preprocess(
-                output_continuous=self.config.data.target.preprocess.continuous,
-                output_discrete=self.config.data.target.preprocess.discrete,
-                stats=target_stats,
-            )
-            self.config.data.target.preprocess.stats = (
-                self.target.stats if hasattr(self.target, "stats") else source_stats
-            )
+        self.source.preprocess(
+            output_continuous=self.config.data.source_preprocess_continuous,
+            output_discrete=self.config.data.source_preprocess_discrete,
+            stats=source_stats,
+        )
+        self.config.data.source_preprocess_stats = (
+            self.source.stats if hasattr(self.source, "stats") else target_stats
+        )
+        self.target.preprocess(
+            output_continuous=self.config.data.target_preprocess_continuous,
+            output_discrete=self.config.data.target_preprocess_discrete,
+            stats=target_stats,
+        )
+        self.config.data.target_preprocess_stats = (
+            self.target.stats if hasattr(self.target, "stats") else source_stats
+        )
 
     def postprocess(self, source_stats=None, target_stats=None):
         if hasattr(self.config.data.source, "preprocess"):
             self.source.postprocess(
-                input_continuous=self.config.data.source.preprocess.continuous,
-                input_discrete=self.config.data.source.preprocess.discrete,
-                stats=self.config.data.source.preprocess.stats
+                input_continuous=self.config.data.source_preprocess_continuous,
+                input_discrete=self.config.data.source_preprocess_discrete,
+                stats=self.config.data.source_preprocess_stats
                 if source_stats is None
                 else source_stats,
             )
-            self.config.data.source.preprocess.stats = (
+            self.config.data.source_preprocess_stats = (
                 self.source.stats if hasattr(self.source, "stats") else target_stats
             )
         if hasattr(self.config.data.target, "preprocess"):
             self.target.postprocess(
-                input_continuous=self.config.data.target.preprocess.continuous,
-                input_discrete=self.config.data.target.preprocess.discrete,
-                stats=self.config.data.target.preprocess.stats
+                input_continuous=self.config.data.target_preprocess_continuous,
+                input_discrete=self.config.data.target_preprocess_discrete,
+                stats=self.config.data.target_preprocess_stats
                 if target_stats is None
                 else target_stats,
             )
-            self.config.data.target.preprocess.stats = (
+            self.config.data.target_preprocess_stats = (
                 self.target.stats if hasattr(self.target, "stats") else source_stats
             )
 
