@@ -156,12 +156,23 @@ class TransdimensionalMoleculesConfig:
 class TransdimensionalEpicConfig:
     dataset_kwargs: DatasetKwargs = field(default_factory=DatasetKwargs)
     data_loader_kwargs: DataLoaderKwargs = field(default_factory=DataLoaderKwargs)
+    encoder: EncoderConfig = field(default_factory=EncoderConfig)
+
+    dim_features_continuous: int = 3
+    dim_features_discrete: int = 1
+    dim_context_continuous: int = 0
+    dim_context_discrete: int = 0
+    vocab_size_features: int = 8
+    vocab_size_context: int = 0
+    batch_size: int = 64
+    min_num_particles: int =  0
+    max_num_particles: int = 128
+    
     loss_kwargs: LossKwargs = field(default_factory=LossKwargs)
     optimizer_kwargs: OptimizerKwargs = field(default_factory=OptimizerKwargs)
     structure_kwargs: StructureKwargs = field(default_factory=StructureKwargs)
     sampler_kwargs: SamplerKwargs = field(default_factory=SamplerKwargs)
     grad_conditioner_kwargs: GradConditionerKwargs = field(default_factory=GradConditionerKwargs)
-    encoder: EncoderConfig = field(default_factory=EncoderConfig)
     augment_kwargs: AugmentKwargs = field(default_factory=AugmentKwargs)
 
     just_visualize: bool = False
@@ -170,7 +181,6 @@ class TransdimensionalEpicConfig:
 
     total_kimg: int = 200000
     ema_halflife_kimg: int = 500
-    batch_size: int = 64
     batch_gpu: Optional[int] = None
     loss_scaling: float = 1.0
     cudnn_benchmark: bool = True

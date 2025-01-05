@@ -8,44 +8,6 @@ from multimodal_particles.models.architectures.epic import MultiModalEPiC
 from multimodal_particles.models.generative.bridges import LinearUniformBridge, TelegraphBridge
 from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
 
-# @dataclass
-# class BridgeState:
-#     time: torch.Tensor = None
-#     continuous: torch.Tensor = None
-#     discrete: torch.Tensor = None
-#     absorbing: torch.Tensor = None
-
-#     def to(self, device):
-#         return BridgeState(
-#             time=self.time.to(device) if isinstance(self.time, torch.Tensor) else None,
-#             continuous=self.continuous.to(device)
-#             if isinstance(self.continuous, torch.Tensor)
-#             else None,
-#             discrete=self.discrete.to(device)
-#             if isinstance(self.discrete, torch.Tensor)
-#             else None,
-#             absorbing=self.absorbing.to(device)
-#             if isinstance(self.absorbing, torch.Tensor)
-#             else None,
-#         )
-
-#     @staticmethod
-#     def cat(states: List["BridgeState"], dim=0) -> "BridgeState":
-#         # function to concat list of states int a single state
-#         def cat_attr(attr_name):
-#             attrs = [getattr(s, attr_name) for s in states]
-#             if all(a is None for a in attrs):
-#                 return None
-#             attrs = [a for a in attrs if a is not None]
-#             return torch.cat(attrs, dim=dim)
-
-#         return BridgeState(
-#             time=cat_attr("time"),
-#             continuous=cat_attr("continuous"),
-#             discrete=cat_attr("discrete"),
-#             absorbing=cat_attr("absorbing"),
-#         )
-
 @dataclass
 class HybridState:
     """time-dependent hybrid bridge state (t, x, k, mask)"""
@@ -267,12 +229,10 @@ class MultiModalBridgeMatching(L.LightningModule):
         )
         return [optimizer], [scheduler]
 
-
 class MultiHeadLoss(nn.Module):
     """
     Combines multiple losses with `learnable` or `fixed` weights.
     """
-
     def __init__(self, weights=None, mode=None):
         super().__init__()
         self.mode = mode
@@ -296,3 +256,41 @@ class MultiHeadLoss(nn.Module):
             return [torch.exp(-weight).item() for weight in self.weights]
         elif self.mode == "fixed":
             return self.weights.tolist()
+        
+# @dataclass
+# class BridgeState:
+#     time: torch.Tensor = None
+#     continuous: torch.Tensor = None
+#     discrete: torch.Tensor = None
+#     absorbing: torch.Tensor = None
+
+#     def to(self, device):
+#         return BridgeState(
+#             time=self.time.to(device) if isinstance(self.time, torch.Tensor) else None,
+#             continuous=self.continuous.to(device)
+#             if isinstance(self.continuous, torch.Tensor)
+#             else None,
+#             discrete=self.discrete.to(device)
+#             if isinstance(self.discrete, torch.Tensor)
+#             else None,
+#             absorbing=self.absorbing.to(device)
+#             if isinstance(self.absorbing, torch.Tensor)
+#             else None,
+#         )
+
+#     @staticmethod
+#     def cat(states: List["BridgeState"], dim=0) -> "BridgeState":
+#         # function to concat list of states int a single state
+#         def cat_attr(attr_name):
+#             attrs = [getattr(s, attr_name) for s in states]
+#             if all(a is None for a in attrs):
+#                 return None
+#             attrs = [a for a in attrs if a is not None]
+#             return torch.cat(attrs, dim=dim)
+
+#         return BridgeState(
+#             time=cat_attr("time"),
+#             continuous=cat_attr("continuous"),
+#             discrete=cat_attr("discrete"),
+#             absorbing=cat_attr("absorbing"),
+#         )

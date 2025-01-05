@@ -51,4 +51,4 @@ def test_model():
     state = model.sample_bridges(random_databatch)
 
 if __name__=="__main__":
-    test_configs()
+    test_random_databatch()

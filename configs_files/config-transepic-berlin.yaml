@@ -26,6 +26,10 @@ dataset_kwargs:
   subset: -1
   train_or_valid: train
 device: cuda
+dim_context_continuous: 0
+dim_context_discrete: 0
+dim_features_continuous: 3
+dim_features_discrete: 1
 distributed: false
 ema_halflife_kimg: 500
 encoder:
@@ -71,6 +75,8 @@ loss_kwargs:
   vp_sde_beta_min: 0.1
   x0_logit_ce_loss_weight: 1.0
 loss_scaling: 1.0
+max_num_particles: 128
+min_num_particles: 0
 optimizer_kwargs:
   betas:
   - 0.9
@@ -125,3 +131,5 @@ structure_kwargs:
   - 1
   - 1
 total_kimg: 200000
+vocab_size_context: 0
+vocab_size_features: 8

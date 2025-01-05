@@ -331,3 +331,10 @@ def states_to_flavor(states):
 
     flavor = F.one_hot(flavor.squeeze(-1), num_classes=5)
     return flavor, charge
+
+def sizes_to_histograms(sizes_tensor):
+    # Get unique sizes and their counts
+    unique_sizes, counts = torch.unique(sizes_tensor, return_counts=True)
+    # Create a dictionary for the histogram
+    histogram = dict(zip(unique_sizes.tolist(), counts.tolist()))
+    return histogram

@@ -4,6 +4,8 @@ from torch.utils.data import DataLoader, Subset
 from torch.utils.data import Dataset
 from collections import namedtuple
 from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
+from multimodal_particles.data.transdimensional_base import GraphicalStructureBase
+from multimodal_particles.models.architectures.egnn_utils import DistributionNodes
 
 class MultimodalBridgeDataset(Dataset):
     def __init__(self, data):
@@ -60,14 +62,15 @@ class MultimodalBridgeDataset(Dataset):
         for idx in range(len(self)):
             yield self[idx]
 
-
 class MultimodalBridgeDataloaderModule:
+    
     def __init__(
         self, config, dataclass, batch_size: int = None, data_split_frac: tuple = None
     ):
         self.dataclass = dataclass
         self.config = config
         self.dataset = MultimodalBridgeDataset(dataclass)
+
         self.data_split = (
             self.config.model.train.data_split_frac
             if data_split_frac is None
@@ -174,3 +177,149 @@ class MultimodalBridgeDataloaderModule:
         model_config.vocab_size_features = full_config.data.vocab_size.features
         model_config.vocab_size_context = full_config.data.vocab_size.context
         return model_config
+
+class JetsGraphicalStructure(GraphicalStructureBase):
+    
+    def __init__(self, max_dim, histogram):
+        self.max_problem_dim = max_dim
+        self.nodes_dist = DistributionNodes(histogram)
+
+    def shapes_without_onehot(self):
+        k = self.max_problem_dim
+        return [torch.Size([k, 3]), torch.Size([k]), torch.Size([k]), \
+                torch.Size([1]), torch.Size([1]), torch.Size([1]), \
+                torch.Size([1]), torch.Size([1]), torch.Size([1])
+        ]
+
+    def shapes_with_onehot(self):
+        k = self.max_problem_dim
+        return [torch.Size([k, 3]), torch.Size([k, 5]), torch.Size([k]),
+                torch.Size([1]), torch.Size([1]), torch.Size([1]), \
+                torch.Size([1]), torch.Size([1]), torch.Size([1])
+        ]
+
+    def remove_problem_dims(self, data, new_dims):
+        pos, atom_type, charge, alpha, homo, lumo, gap, mu, Cv = data
+
+
+        B = pos.shape[0]
+        assert pos.shape == (B, *self.shapes_with_onehot()[0])
+        assert atom_type.shape == (B, *self.shapes_with_onehot()[1])
+        assert charge.shape == (B, *self.shapes_with_onehot()[2])
+
+        # for b_idx in range(B):
+        #     pos[b_idx, new_dims[b_idx]:, :] = 0.0
+        #     cats[b_idx, new_dims[b_idx]:, :] = 0.0
+        #     ints[b_idx, new_dims[b_idx]:] = 0.0
+
+        # pos, cats, ints = data
+        device = pos.device
+        new_dims_dev = new_dims.to(device)
+
+        pos_mask = torch.arange(pos.shape[1], device=device).view(1, -1, 1).repeat(pos.shape[0], 1, pos.shape[2])
+        pos_mask = (pos_mask < new_dims_dev.view(-1, 1, 1))
+        pos = pos * pos_mask
+
+        atom_type_mask = torch.arange(atom_type.shape[1], device=device).view(1, -1, 1).repeat(atom_type.shape[0], 1, atom_type.shape[2])
+        atom_type_mask = (atom_type_mask < new_dims_dev.view(-1, 1, 1))
+        atom_type = atom_type * atom_type_mask
+
+        charge_mask = torch.arange(charge.shape[1], device=device).view(1, -1).repeat(charge.shape[0], 1)
+        charge_mask = (charge_mask < new_dims_dev.view(-1, 1))
+        charge = charge * charge_mask
+
+        return pos, atom_type, charge, alpha, homo, lumo, gap, mu, Cv
+
+    def adjust_st_batch(self, st_batch):
+        device = st_batch.get_device()
+        n_nodes = st_batch.gs.max_problem_dim
+        B = st_batch.B
+        dims = st_batch.get_dims()
+
+        nan_batches = torch.isnan(st_batch.get_flat_lats()).any(dim=1).long().view(B,1)
+        if nan_batches.sum() > 0:
+            print('nan batches: ', nan_batches.sum())
+        st_batch.set_flat_lats(torch.nan_to_num(st_batch.get_flat_lats()))
+
+
+        x0_pos = st_batch.tuple_batch[0]
+        assert x0_pos.shape == (B, n_nodes, 3)
+
+
+        atom_mask = torch.arange(n_nodes).view(1, -1) < dims.view(-1, 1) # (B, n_nodes)
+        assert atom_mask.shape == (B, n_nodes)
+        atom_mask = atom_mask.long().to(device)
+        node_mask = atom_mask.unsqueeze(2)
+        assert node_mask.shape == (B, n_nodes, 1)
+
+        # if any dims are 0 then set the node mask to all 1's. otherwise you get nans
+        # all these results will be binned later anyway
+        node_mask[dims==0, ...] = torch.ones((B, n_nodes, 1), device=device)[dims==0, ...].long()
+
+        masked_max_abs_value = (x0_pos * (1 - node_mask)).abs().sum().item()
+        assert masked_max_abs_value < 1e-5, f'Error {masked_max_abs_value} too high'
+        N = node_mask.sum(1, keepdims=True)
+
+        mean = torch.sum(x0_pos, dim=1, keepdim=True) / N
+        assert mean.shape == (B, 1, 3)
+        x0_pos = x0_pos - mean * node_mask
+
+        assert x0_pos.shape == (B, n_nodes, 3)
+        st_batch.set_flat_lats(torch.cat([
+            x0_pos.flatten(start_dim=1),
+            st_batch.tuple_batch[1].flatten(start_dim=1),
+            st_batch.tuple_batch[2].flatten(start_dim=1)
+        ], dim=1))
+        return mean
+
+    def get_auto_target(self, st_batch, adjust_val):
+        B = st_batch.B
+        device = st_batch.get_device()
+        n_nodes = st_batch.gs.max_problem_dim
+        assert adjust_val.shape == (B, 1, 3) # CoM of delxt
+        delxt_CoM = adjust_val
+
+        xt_pos = st_batch.tuple_batch[0]
+        assert xt_pos.shape == (B, n_nodes, 3)
+        atom_mask = torch.arange(n_nodes).view(1, -1) < st_batch.get_dims().view(-1, 1) # (B, n_nodes)
+        assert atom_mask.shape == (B, n_nodes)
+        atom_mask = atom_mask.long().to(device)
+        node_mask = atom_mask.unsqueeze(2)
+        assert node_mask.shape == (B, n_nodes, 1)
+
+        xt_pos_from_y = (xt_pos - delxt_CoM) * node_mask
+
+        assert xt_pos_from_y.shape == (B, n_nodes, 3)
+
+        auto_target = torch.cat([
+            xt_pos_from_y.flatten(start_dim=1),
+            st_batch.tuple_batch[1].flatten(start_dim=1),
+            st_batch.tuple_batch[2].flatten(start_dim=1)
+        ], dim=1)
+        assert auto_target.shape == (B, n_nodes * (3+5+1))
+
+        return auto_target
+
+    def get_nearest_atom(self, st_batch, delxt_st_batch):
+        # assumes we are doing final dim deletion
+        B = st_batch.B
+        device = st_batch.get_device()
+
+        x_full = st_batch.tuple_batch[0] # (B, n_nodes, 3)
+        full_dims = st_batch.get_dims() # (B,)
+        x_del = delxt_st_batch.tuple_batch[0] # (B, n_nodes, 3)
+
+        # if full dim is 3 then x_full is [0, 1, 2] so missing atom is at idx 2
+
+        missing_atom_pos = x_full[torch.arange(B, device=device).long(), (full_dims - 1).long(), :] # (B, 3)
+
+        distances_to_missing = torch.sum((x_del - missing_atom_pos.unsqueeze(1)) ** 2, dim=2) # (B, n_nodes)
+
+        atom_mask = torch.arange(st_batch.gs.max_problem_dim).view(1, -1) < delxt_st_batch.get_dims().view(-1, 1) # (B, n_nodes)
+        atom_mask = atom_mask.to(device).long()
+
+        distances_to_missing = atom_mask * distances_to_missing + (1-atom_mask) * 1e3
+
+        nearest_atom = torch.argmin(distances_to_missing, dim=1) # (B,)
+
+        return nearest_atom

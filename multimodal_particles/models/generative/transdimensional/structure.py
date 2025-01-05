@@ -216,7 +216,13 @@ class StructuredDataBatch():
         return tmp.get_flat_lats()
 
 class Structure():
-    def __init__(self, exist, observed, dataset):  #, shapes=None, example=None, names=None):
+
+    #name="qm9"
+    #dataset_is_image=[0, 0, 0, 0, 0, 0, 0, 0, 0]
+    #dataset_is_onehot = [0, 1, 0, 0, 0, 0, 0, 0, 0]
+    #names = ["pos", "atom_type", "charges", "alpha", "homo", "lumo", "gap", "mu", "Cv"]
+
+    def __init__(self, exist, observed, dataset, graphical_structure=None):  #, shapes=None, example=None, names=None):
         """
         Stores metadata about tensor shapes and observedness. One of shapes or example (without batch dimension)
         must be provided to extract the shapes from.
@@ -226,10 +232,15 @@ class Structure():
         self.latent = 1 - self.observed
         self.is_onehot = [oh for oh, e in zip(dataset.is_onehot, self.exist) if e]
         names = dataset.names if hasattr(dataset, "names") else [f"tensor_{i}" for i in range(len(self.shapes))]
+
         self.names = [n for n, e in zip(names, self.exist) if e]
         print("Created structure with observedness", self.observed)
-        if hasattr(dataset, "graphical_structure"):
-            self.graphical_structure = dataset.graphical_structure
+
+        if graphical_structure is not None:
+            self.graphical_structure = graphical_structure
+        else:
+            if hasattr(dataset, "graphical_structure"):
+                self.graphical_structure = dataset.graphical_structure
 
     def set_varying_problem_dims(self, problem_dims, batch_max_problem_dim):
         self.graphical_structure.set_varying_problem_dims(problem_dims, batch_max_problem_dim)
@@ -244,7 +255,6 @@ class Structure():
         self.shapes = self.graphical_structure.shapes
 
     def get_exist_mask(self, include_obs, include_onehot_channels):
-
         B = len(self.graphical_structure.problem_dims)
         # existing_data = [torch.ones((B, *shape)) for shape, e in zip(self.shapes, self.exist) if e]
 
