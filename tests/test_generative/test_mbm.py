@@ -15,18 +15,24 @@ def test_configs():
     model_config = MultimodalBridgeMatchingConfig.from_full_config(full_config)
     assert model_config is not None
 
-def test_random_databatch():
-    #obtain configs
-    config_file_path = os.path.join(test_resources_dir, "configs_files", "config-mbm-test.yaml")
-    full_config = load_config(config_file_path)
+
+def test_new_configs(config_file_path=None):
+    if config_file_path:
+        model_config = load_config(config_file_path)
+    else:
+        model_config = MultimodalBridgeMatchingConfig()
+    assert model_config is not None
     
-    #rand
-    random_databatch = MultimodalBridgeDataloaderModule.random_databatch(full_config)
+
+def test_random_databatch():
+    config_file_path=os.path.join(test_resources_dir, "configs_files", "config-mbm-test-new.yaml")
+    model_config = load_config(config_file_path)
+    random_databatch = MultimodalBridgeDataloaderModule.random_databatch(model_config)
 
     # create datamodule
-    jets = JetDataclass(config=full_config)
+    jets = JetDataclass(config=model_config)
     jets.preprocess()
-    dataloader = MultimodalBridgeDataloaderModule(config=full_config, dataclass=jets)
+    dataloader = MultimodalBridgeDataloaderModule(config=model_config, dataclass=jets)
     databatch = next(dataloader.train.__iter__())
 
     # Check that all fields have the same shape
@@ -41,14 +47,18 @@ def test_random_databatch():
 
     print("All fields have matching shapes.")
 
+
 def test_model():
-    config_file_path = os.path.join(test_resources_dir, "configs_files", "config-mbm-test.yaml")
-    full_config = load_config(config_file_path)
-    model_config = MultimodalBridgeMatchingConfig.from_full_config(full_config)
-    model_config = MultimodalBridgeDataloaderModule.update_model_config(full_config,model_config)
+    config_file_path=os.path.join(test_resources_dir, "configs_files", "config-mbm-test-new.yaml")
+    model_config = load_config(config_file_path)
+    random_databatch = MultimodalBridgeDataloaderModule.random_databatch(model_config)
     model = MultiModalBridgeMatching(model_config)
-    random_databatch = MultimodalBridgeDataloaderModule.random_databatch(full_config)
     state = model.sample_bridges(random_databatch)
+    print(state.time.shape, state.continuous.shape, state.discrete.shape, state.absorbing.shape)
+
 
 if __name__=="__main__":
-    test_configs()
+    test_new_configs()
+    test_new_configs(config_file_path=os.path.join(test_resources_dir, "configs_files", "config-mbm-test-new.yaml"))
+    test_random_databatch() 
+    test_model()

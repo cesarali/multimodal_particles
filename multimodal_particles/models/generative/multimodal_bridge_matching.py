@@ -8,44 +8,6 @@ from multimodal_particles.models.architectures.epic import MultiModalEPiC
 from multimodal_particles.models.generative.bridges import LinearUniformBridge, TelegraphBridge
 from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
 
-# @dataclass
-# class BridgeState:
-#     time: torch.Tensor = None
-#     continuous: torch.Tensor = None
-#     discrete: torch.Tensor = None
-#     absorbing: torch.Tensor = None
-
-#     def to(self, device):
-#         return BridgeState(
-#             time=self.time.to(device) if isinstance(self.time, torch.Tensor) else None,
-#             continuous=self.continuous.to(device)
-#             if isinstance(self.continuous, torch.Tensor)
-#             else None,
-#             discrete=self.discrete.to(device)
-#             if isinstance(self.discrete, torch.Tensor)
-#             else None,
-#             absorbing=self.absorbing.to(device)
-#             if isinstance(self.absorbing, torch.Tensor)
-#             else None,
-#         )
-
-#     @staticmethod
-#     def cat(states: List["BridgeState"], dim=0) -> "BridgeState":
-#         # function to concat list of states int a single state
-#         def cat_attr(attr_name):
-#             attrs = [getattr(s, attr_name) for s in states]
-#             if all(a is None for a in attrs):
-#                 return None
-#             attrs = [a for a in attrs if a is not None]
-#             return torch.cat(attrs, dim=dim)
-
-#         return BridgeState(
-#             time=cat_attr("time"),
-#             continuous=cat_attr("continuous"),
-#             discrete=cat_attr("discrete"),
-#             absorbing=cat_attr("absorbing"),
-#         )
-
 @dataclass
 class HybridState:
     """time-dependent hybrid bridge state (t, x, k, mask)"""
@@ -116,7 +78,7 @@ class MultiModalBridgeMatching(L.LightningModule):
     def __init__(self, config:MultimodalBridgeMatchingConfig):
         super().__init__()
         self.config = config
-        self.vocab_size = config.vocab_size_features
+        self.vocab_size = config.data.vocab_size_features
 
         self.encoder = MultiModalEPiC(config)
 
@@ -200,8 +162,8 @@ class MultiModalBridgeMatching(L.LightningModule):
         """
         time_steps = torch.linspace(
             0.0,
-            1.0 - self.config.model.pipeline.time_eps,
-            self.config.model.pipeline.num_timesteps,
+            1.0 - self.config.bridge.time_eps,
+            self.config.bridge.num_timesteps,
             device=self.device,
         )
         delta_t = (time_steps[-1] - time_steps[0]) / (len(time_steps) - 1)

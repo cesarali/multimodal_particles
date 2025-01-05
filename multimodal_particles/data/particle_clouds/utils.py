@@ -253,11 +253,15 @@ def sample_noise(noise="GaussNoise", **args):
 
 def sample_masks(**args):
     """Sample masks from empirical multiplicity distribution `hist`."""
-    hist = args.get("set_masks_like", None)
+    hist = args.get("target_multiplicity", None)
+    min_num_particles = args.get("min_num_particles", 128)
     max_num_particles = args.get("max_num_particles", 128)
     num_jets = args.get("num_jets", 100_000)
 
+
     if hist is None:
+        return torch.ones((num_jets, max_num_particles, 1)).long()
+    elif min_num_particles == max_num_particles:
         return torch.ones((num_jets, max_num_particles, 1)).long()
     else:
         hist_values, bin_edges = np.histogram(

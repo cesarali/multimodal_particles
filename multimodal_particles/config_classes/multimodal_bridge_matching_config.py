@@ -23,32 +23,27 @@ class TrainingConfig:
     })
 
 @dataclass
-class EncoderConfig:
-    name: str = "MultiModalEPiC"
-    num_blocks: int = 2
-    emb_time: int = 16
-    emb_features_continuous: int = 16
-    emb_features_discrete: int = 16
-    emb_context_continuous: int = 0
-    emb_context_discrete: int = 0
-    hidden_local: int = 16
-    hidden_glob: int = 16
-    time_embedding: str = "SinusoidalPositionalEncoding"
-    features_continuous_embedding: str = "Linear"
-    features_discrete_embedding: str = "Embedding"
-    context_continuous_embedding: Optional[str] = None
-    context_discrete_embedding: Optional[str] = None
-    skip_connection: bool = True
-    dropout: float = 0.1
-    activation: str = "SELU"
-    add_discrete_head: bool = True
-
-@dataclass
-class MultimodalBridgeMatchingConfig:
-    name_str: str = "ExampleModel"
-    bridge_continuous: str = "LinearUniformBridge"
-    bridge_discrete: str = "TelegraphBridge"
-    bridge_params: Dict[str, float] = field(default_factory=lambda: {"sigma": 0.0001, "gamma": 0.125})
+class DataConfig:
+    target_name: str = "AspenOpenJets"
+    target_path: List[str] = field(default_factory=lambda: None)
+    target_preprocess_continuous: str = "standardize"
+    target_preprocess_discrete: str = "tokens"
+    target_info: Dict[str, Union[list, dict]] = field(default_factory=lambda: {
+        "stats": None, 
+        "hist_num_particles": None # dict with histogram of number of particles
+    })
+    source_name: str = "GaussNoise"
+    source_path: List[str] = field(default_factory=lambda: None)
+    source_preprocess_continuous: str = None
+    source_preprocess_discrete: str = "tokens"
+    source_info: Dict[str, Union[list, dict]] = field(default_factory=lambda: {
+        "stats": None, 
+        "hist_num_particles": None # dict with histogram of number of particles
+    })
+    source_masks_from_target_masks: bool = True # if True, source mask is sampled from multinomial dist from number of target particles
+    min_num_particles: int=0
+    max_num_particles: int=128
+    num_jets: int=1000
     dim_features_continuous: int = 3
     dim_features_discrete: int = 1
     dim_context_continuous: int = 0
@@ -56,13 +51,44 @@ class MultimodalBridgeMatchingConfig:
     vocab_size_features: int = 8
     vocab_size_context: int = 0
 
-    
+@dataclass
+class BridgeConfig:
+    continuous: str = "LinearUniformBridge"
+    discrete: str = "TelegraphBridge"
+    sigma: float = 0.0001
+    gamma: float = 0.125
+    num_timesteps: int = 1000
+    time_eps: float = 0.0001
+
+@dataclass
+class EncoderConfig:
+    name: str = "MultiModalEPiC"
+    num_blocks: int = 2
+    embedding_time: str = "SinusoidalPositionalEncoding"
+    embedding_features_continuous: str = "Linear"
+    embedding_features_discrete: str = "Embedding"
+    embedding_context_continuous: Optional[str] = None
+    embedding_context_discrete: Optional[str] = None
+    dim_hidden_local: int = 16
+    dim_hidden_glob: int = 16
+    dim_emb_time: int = 16
+    dim_emb_features_continuous: int = 16
+    dim_emb_features_discrete: int = 16
+    dim_emb_context_continuous: int = 0
+    dim_emb_context_discrete: int = 0
+    skip_connection: bool = True
+    dropout: float = 0.1
+    activation: str = "SELU"
+    add_discrete_head: bool = True
+
+
+
+@dataclass
+class MultimodalBridgeMatchingConfig:
+    name_str: str = "ExampleModel"
+    bridge: BridgeConfig = field(default_factory=BridgeConfig)
+    data: DataConfig = field(default_factory=DataConfig)
     encoder: EncoderConfig = field(default_factory=EncoderConfig)
-    pipeline: Dict[str, float] = field(default_factory=lambda: {
-        "method": "EulerLeapingSolver",
-        "num_timesteps": 1000,
-        "time_eps": 0.0001
-    })
     train: TrainingConfig = field(default_factory=TrainingConfig)
 
     def to_json(self) -> str:

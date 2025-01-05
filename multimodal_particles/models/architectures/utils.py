@@ -8,46 +8,46 @@ class InputEmbeddings(nn.Module):
         super(InputEmbeddings, self).__init__()
 
         # ...dimensions:
-        dim_features_continuous = config.dim_features_continuous
-        dim_features_discrete = config.dim_features_discrete
-        dim_context_continuous = config.dim_context_continuous
-        dim_context_discrete = config.dim_context_discrete
+        dim_features_continuous = config.data.dim_features_continuous
+        dim_features_discrete = config.data.dim_features_discrete
+        dim_context_continuous = config.data.dim_context_continuous
+        dim_context_discrete = config.data.dim_context_discrete
 
 
         # ...vocab sizes for discrete data:
-        vocab_size = config.vocab_size_features
-        vocab_size_context = config.vocab_size_context
+        vocab_size = config.data.vocab_size_features
+        vocab_size_context = config.data.vocab_size_context
 
         # ...embedding types:
-        embed_type_time = config.encoder.time_embedding
-        embed_type_features_continuous = config.encoder.features_continuous_embedding
-        embed_type_features_discrete = config.encoder.features_discrete_embedding
-        embed_type_context_continuous = config.encoder.context_continuous_embedding
-        embed_type_context_discrete = config.encoder.context_discrete_embedding
+        embedding_time = config.encoder.embedding_time
+        embedding_continuous = config.encoder.embedding_continuous
+        embedding_discrete = config.encoder.embedding_discrete
+        embedding_continuous_context = config.encoder.embedding_continuous_context
+        embedding_discrete_context = config.encoder.embedding_discrete_context
 
         # ...embedding dimensions:
-        dim_time_emb = config.encoder.emb_time
-        dim_features_continuous_emb = (
-            config.encoder.emb_features_continuous
-            if config.encoder.emb_features_continuous
+        dim_emb_time = config.encoder.dim_emb_time
+        dim_emb_features_continuous = (
+            config.encoder.dim_emb_features_continuous
+            if config.encoder.dim_emb_features_continuous
             else dim_features_continuous
         )
-        dim_features_discrete_emb = config.encoder.emb_features_discrete
-        dim_context_continuous_emb = (
-            config.encoder.emb_context_continuous
-            if config.encoder.emb_context_continuous
+        dim_emb_features_discrete = config.encoder.dim_emb_features_discrete
+        dim_emb_context_continuous = (
+            config.encoder.dim_emb_context_continuous
+            if config.encoder.dim_emb_context_continuous
             else dim_context_continuous
         )
-        dim_context_discrete_emb = config.encoder.emb_context_discrete
+        dim_emb_context_discrete = config.encoder.dim_emb_context_discrete
 
         # ...Time embeddings:
 
-        if embed_type_time == "SinusoidalPositionalEncoding":
-            self.time_embedding = SinusoidalPositionalEncoding(
-                dim_time_emb, max_period=10000
+        if embedding_time == "SinusoidalPositionalEncoding":
+            self.embedding_time = SinusoidalPositionalEncoding(
+                dim_emb_time, max_period=10000
             )
-        elif embed_type_time == "Linear":
-            self.time_embedding = nn.Linear(1, dim_time_emb)
+        elif embedding_time == "Linear":
+            self.embedding_time = nn.Linear(1, dim_emb_time)
         else:
             NotImplementedError(
                 "Time embedding not implemented, choose from `SinusoidalPositionalEncoding`, `KANLinear` or `Linear`"
@@ -55,12 +55,12 @@ class InputEmbeddings(nn.Module):
 
         # ...Feature embeddings:
 
-        if dim_features_continuous_emb:
-            if embed_type_features_continuous == "Linear":
+        if dim_emb_features_continuous:
+            if embedding_continuous == "Linear":
                 self.embedding_continuous = nn.Linear(
-                    dim_features_continuous, dim_features_continuous_emb
+                    dim_features_continuous, dim_emb_features_continuous
                 )
-            elif embed_type_features_continuous is None:
+            elif embedding_continuous is None:
                 self.embedding_continuous = nn.Identity()
             else:
                 NotImplementedError(
@@ -68,13 +68,13 @@ class InputEmbeddings(nn.Module):
                 )
 
         if dim_features_discrete:
-            if embed_type_features_discrete == "Embedding":
+            if embedding_discrete == "Embedding":
                 self.embedding_discrete = nn.Embedding(
-                    vocab_size, dim_features_discrete_emb
+                    vocab_size, dim_emb_features_discrete
                 )
-            elif embed_type_features_discrete == "Linear":
+            elif embedding_discrete == "Linear":
                 self.embedding_discrete = nn.Linear(
-                    dim_features_discrete, dim_features_continuous_emb
+                    dim_features_discrete, dim_emb_features_discrete
                 )
             else:
                 NotImplementedError(
@@ -84,25 +84,25 @@ class InputEmbeddings(nn.Module):
         # ...Context embeddings:
 
         if dim_context_continuous:
-            if embed_type_context_continuous == "Embedding":
-                self.embedding_context_continuous = nn.Linear(
-                    dim_context_continuous, dim_context_continuous_emb
+            if embedding_continuous_context == "Embedding":
+                self.embedding_continuous_context = nn.Linear(
+                    dim_context_continuous, dim_emb_context_continuous
                 )
-            elif embed_type_context_continuous is None:
-                self.embedding_context_continuous = nn.Identity()
+            elif embedding_continuous_context is None:
+                self.embedding_continuous_context = nn.Identity()
             else:
                 NotImplementedError(
                     "Continuous context embedding not implemented, use `embedding` or None"
                 )
 
         if dim_context_discrete:
-            if embed_type_context_discrete == "Embedding":
+            if embedding_discrete_context == "Embedding":
                 self.embedding_context_discrete = nn.Embedding(
-                    vocab_size_context, dim_context_discrete_emb
+                    vocab_size_context, dim_emb_context_discrete
                 )
-            elif embed_type_context_discrete == "Linear":
+            elif embedding_discrete_context == "Linear":
                 self.embedding_context_discrete = nn.Linear(
-                    dim_context_discrete, dim_features_continuous_emb
+                    dim_context_discrete, dim_emb_context_discrete
                 )
             else:
                 NotImplementedError(
@@ -130,7 +130,7 @@ class InputEmbeddings(nn.Module):
 
         # ...time:
 
-        t_emb = self.time_embedding(t.squeeze(-1))
+        t_emb = self.embedding_time(t.squeeze(-1))
         t_context_emb = t_emb.clone().to(t_emb.device)
         if x.ndim == 3:
             t_emb = t_emb.unsqueeze(1).repeat(
@@ -154,12 +154,12 @@ class InputEmbeddings(nn.Module):
 
         # ...context:
 
-        if hasattr(self, "embedding_context_continuous"):
-            emb = self.embedding_context_continuous(context_continuous)
+        if hasattr(self, "embedding_continuous_context"):
+            emb = self.embedding_continuous_context(context_continuous)
             context.append(emb)
 
-        if hasattr(self, "embedding_context_discrete"):
-            emb = self.embedding_context_discrete(context_discrete).squeeze(1)
+        if hasattr(self, "embedding_discrete_context"):
+            emb = self.embedding_discrete_context(context_discrete).squeeze(1)
             context.append(emb)
 
         features = torch.cat(

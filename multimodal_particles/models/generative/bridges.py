@@ -16,7 +16,7 @@ class LinearUniformBridge:
     """
 
     def __init__(self, config: MultimodalBridgeMatchingConfig):
-        self.sigma = config.bridge_params["sigma"]
+        self.sigma = config.bridge.sigma
 
     def sample(self, t, x0, x1):
         x = t * x1 + (1.0 - t) * x0
@@ -50,7 +50,7 @@ class SchrodingerBridge:
     """
 
     def __init__(self, config: MultimodalBridgeMatchingConfig):
-        self.sigma = config.bridge_params["sigma"]
+        self.sigma = config.bridge.sigma
 
     def sample(self, t, x0, x1):
         x = t * x1 + (1.0 - t) * x0
@@ -84,9 +84,9 @@ class TelegraphBridge:
     """
 
     def __init__(self, config: MultimodalBridgeMatchingConfig):
-        self.gamma = config.bridge_params["gamma"]
-        self.time_epsilon = config.pipeline["time_eps"]
-        self.vocab_size = config.vocab_size_features
+        self.gamma = config.bridge.gamma
+        self.time_epsilon = config.bridge.time_eps
+        self.vocab_size = config.data.vocab_size_features
 
     def sample(self, t, k0, k1):
         transition_probs = self.transition_probability(t, k0, k1)
