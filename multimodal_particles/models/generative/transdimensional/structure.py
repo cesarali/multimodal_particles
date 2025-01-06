@@ -234,7 +234,7 @@ class Structure():
         self.observed = np.array([o for o, e in zip(observed, self.exist) if e], dtype=np.uint8)
         self.latent = 1 - self.observed
         self.is_onehot = [oh for oh, e in zip(dataset.is_onehot, self.exist) if e]
-        names = dataset.names if hasattr(dataset, "names") else [f"tensor_{i}" for i in range(len(self.shapes))]
+        names = dataset.names_in_batch if hasattr(dataset, "names_in_batch") else [f"tensor_{i}" for i in range(len(self.shapes))]
 
         self.names = [n for n, e in zip(names, self.exist) if e]
         print("Created structure with observedness", self.observed)

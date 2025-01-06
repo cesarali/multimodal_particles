@@ -304,7 +304,7 @@ class JetsDataloaderModule:
         self.names_in_batch = names_in_batch
         self.observed = np.zeros(len(names_in_batch)).astype(int)
         self.is_onehot = np.zeros(len(names_in_batch)).astype(int)
-        self.exists = np.ones(len(names_in_batch)).astype(int)
+        self.exist = np.ones(len(names_in_batch)).astype(int)
         self.name_to_index = dict(zip(names_in_batch,range(len(names_in_batch))))
 
         if "target_discrete" in names_in_batch:

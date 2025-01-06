@@ -36,11 +36,12 @@ def test_graphical_structure():
     model = TransdimensionalJumpDiffusion(config,datamodule)
 
     # create structures
+    structure = Structure(datamodule.exist, datamodule.observed, datamodule)
     graphical_structure = JetsGraphicalStructure(datamodule)
     st_batch = StructuredDataBatch(data,
                                    dims,
                                    datamodule.observed,
-                                   datamodule.exists,
+                                   datamodule.exist,
                                    datamodule.is_onehot,
                                    datamodule.graphical_structure)
     
@@ -71,5 +72,27 @@ def test_graphical_structure():
     graphical_structure.adjust_st_batch(st_batch)
     mean, std = model.noise_schedule.get_p0t_stats(st_batch, ts.to(device))
 
+def test_loss():
+    #obtain configs
+    config = TransdimensionalEpicConfig()
+    config.data.return_type = "list"
+
+    # create datamodule
+    jets = JetDataclass(config=config)
+    jets.preprocess()
+    datamodule = JetsDataloaderModule(config=config, jetdataset=jets)
+    dims, *data = next(datamodule.train.__iter__())
+
+    st_batch = StructuredDataBatch(data,
+                                   dims,
+                                   datamodule.observed,
+                                   datamodule.exist,
+                                   datamodule.is_onehot,
+                                   datamodule.graphical_structure)
+    # create module
+    model = TransdimensionalJumpDiffusion(config,datamodule)
+    loss = model.jump_diffusion_loss(model.net,st_batch)
+
+
 if __name__=="__main__":
-    test_graphical_structure()
+    test_loss()
