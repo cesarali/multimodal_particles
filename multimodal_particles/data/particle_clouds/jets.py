@@ -13,13 +13,15 @@ plt.rcParams["figure.autolayout"] = False
 vector.register_awkward()
 
 from multimodal_particles.data.particle_clouds.particles import ParticleClouds
-
+from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
 
 class JetDataclass:
     """class that prepares the source-target coupling"""
 
-    def __init__(self, config):
+    def __init__(self, config:MultimodalBridgeMatchingConfig):
         self.config = config
+        self.vocab_size_features = self.config.data.vocab_size_features
+        self.vocab_size_context = self.config.data.vocab_size_context
         kwargs = config.data.__dict__
         
         #...define source and target:

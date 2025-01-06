@@ -1,7 +1,50 @@
 import yaml
 from dataclasses import dataclass, field,asdict
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict,Union
 
+@dataclass
+class JetsDataConfig:
+    # target 
+    target_name: str = "AspenOpenJets"
+    target_path: List[str] = field(default_factory=lambda: ["/home/cesarali/Codes/multimodal_particles/data/2016H_job0.h5"])
+    target_preprocess_continuous: str = "standardize"
+    target_preprocess_discrete: str = "tokens"
+    target_info: Dict[str, Union[list, dict]] = field(default_factory=lambda: {
+        "stats": None, 
+        "hist_num_particles": None # dict with histogram of number of particles
+    })
+    # source 
+    source_name: str = "GaussNoise"
+    source_path: List[str] = field(default_factory=lambda: None)
+    source_preprocess_continuous: str = None
+    source_preprocess_discrete: str = "tokens"
+    source_info: Dict[str, Union[list, dict]] = field(default_factory=lambda: {
+        "stats": None, 
+        "hist_num_particles": None # dict with histogram of number of particles
+    })
+    source_masks_from_target_masks: bool = True # if True, source mask is sampled from multinomial dist from number of target particles
+    # dimensions
+    min_num_particles: int=0
+    max_num_particles: int=128
+    num_jets: int=1000
+    dim_features_continuous: int = 3
+    dim_features_discrete: int = 1
+    dim_context_continuous: int = 0
+    dim_context_discrete: int = 0
+    vocab_size_features: int = 8
+    vocab_size_context: int = 0
+
+    # type of databatch
+    return_type: str = "namedtuple" # list  # if list the dataloader is prepared for transdimensional and does not send source
+
+    # transdimensional arguments
+    graphical_structure: str = ""
+    exist: List[int] = None 
+    observed: List[int] = None
+
+    batch_size: int = 1024
+    data_split_frac: List[float] = field(default_factory=lambda: [0.8, 0.2, 0.0])
+    
 @dataclass
 class DatasetKwargs:
     class_name: str = "training.dataset.QM9Dataset"
@@ -84,18 +127,18 @@ class GradConditionerKwargs:
 class EncoderConfig:
     name: str = "MultiModalEPiC"
     num_blocks: int = 2
-    emb_time: int = 16
-    emb_features_continuous: int = 16
-    emb_features_discrete: int = 16
-    emb_context_continuous: int = 0
-    emb_context_discrete: int = 0
-    hidden_local: int = 16
-    hidden_glob: int = 16
-    time_embedding: str = "SinusoidalPositionalEncoding"
-    features_continuous_embedding: str = "Linear"
-    features_discrete_embedding: str = "Embedding"
-    context_continuous_embedding: Optional[str] = None
-    context_discrete_embedding: Optional[str] = None
+    embedding_time: str = "SinusoidalPositionalEncoding"
+    embedding_features_continuous: str = "Linear"
+    embedding_features_discrete: str = "Embedding"
+    embedding_context_continuous: Optional[str] = None
+    embedding_context_discrete: Optional[str] = None
+    dim_hidden_local: int = 16
+    dim_hidden_glob: int = 16
+    dim_emb_time: int = 16
+    dim_emb_features_continuous: int = 16
+    dim_emb_features_discrete: int = 16
+    dim_emb_context_continuous: int = 0
+    dim_emb_context_discrete: int = 0
     skip_connection: bool = True
     dropout: float = 0.1
     activation: str = "SELU"
@@ -154,19 +197,8 @@ class TransdimensionalMoleculesConfig:
 
 @dataclass
 class TransdimensionalEpicConfig:
-    dataset_kwargs: DatasetKwargs = field(default_factory=DatasetKwargs)
-    data_loader_kwargs: DataLoaderKwargs = field(default_factory=DataLoaderKwargs)
+    data: JetsDataConfig = field(default_factory=JetsDataConfig)
     encoder: EncoderConfig = field(default_factory=EncoderConfig)
-
-    dim_features_continuous: int = 3
-    dim_features_discrete: int = 1
-    dim_context_continuous: int = 0
-    dim_context_discrete: int = 0
-    vocab_size_features: int = 8
-    vocab_size_context: int = 0
-    batch_size: int = 64
-    min_num_particles: int =  0
-    max_num_particles: int = 128
     
     loss_kwargs: LossKwargs = field(default_factory=LossKwargs)
     optimizer_kwargs: OptimizerKwargs = field(default_factory=OptimizerKwargs)
@@ -181,6 +213,7 @@ class TransdimensionalEpicConfig:
 
     total_kimg: int = 200000
     ema_halflife_kimg: int = 500
+    batch_size: int = 64
     batch_gpu: Optional[int] = None
     loss_scaling: float = 1.0
     cudnn_benchmark: bool = True
@@ -196,17 +229,16 @@ class TransdimensionalEpicConfig:
         with open(file_path, 'r') as f:
             data = yaml.safe_load(f)
         return TransdimensionalEpicConfig(
-            dataset_kwargs=DatasetKwargs(**data.get('dataset_kwargs', {})),
+            data=JetsDataConfig(**data.get('data', {})),
+            encoder=EncoderConfig(**data.get('encoder', {})),
             distributed=data.get('distributed', False),
             device=data.get('device', "cuda"),
-            data_loader_kwargs=DataLoaderKwargs(**data.get('data_loader_kwargs', {})),
             loss_kwargs=LossKwargs(**data.get('loss_kwargs', {})),
             optimizer_kwargs=OptimizerKwargs(**data.get('optimizer_kwargs', {})),
             just_visualize=data.get('just_visualize', False),
             structure_kwargs=StructureKwargs(**data.get('structure_kwargs', {})),
             sampler_kwargs=SamplerKwargs(**data.get('sampler_kwargs', {})),
             grad_conditioner_kwargs=GradConditionerKwargs(**data.get('grad_conditioner_kwargs', {})),
-            encoder=NetworkKwargs(**data.get('network_kwargs', {})),
             augment_kwargs=AugmentKwargs(**data.get('augment_kwargs', {})),
             total_kimg=data.get('total_kimg', 200000),
             ema_halflife_kimg=data.get('ema_halflife_kimg', 500),

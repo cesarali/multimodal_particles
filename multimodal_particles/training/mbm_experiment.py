@@ -19,11 +19,11 @@ class MultimodalBridgeMatchingExperiment(BasicLightningExperiment):
     def setup_datamodule(self):
         jets = JetDataclass(config=self.config)
         jets.preprocess()
-        self.datamodule = MultimodalBridgeDataloaderModule(config=self.config, dataclass=jets)
+        self.datamodule = MultimodalBridgeDataloaderModule(config=self.config, jetdataset=jets)
 
     def setup_model(self):
         self.model_config = MultimodalBridgeMatchingConfig.from_full_config(self.config)
-        self.model_config = MultimodalBridgeDataloaderModule.update_model_config(self.config,self.model_config)
+        self.model_config = MultimodalBridgeDataloaderModule.update_config(self.config,self.model_config)
         self.model = MultiModalBridgeMatching(self.model_config)        
     
     def save_test_samples(self):

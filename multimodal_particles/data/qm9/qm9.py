@@ -1815,8 +1815,7 @@ def plot_data3d(positions, atom_type, dataset_info, camera_elev=0, camera_azim=0
 
 # ------------------- end from visualize ------------------------
 
-from training.structure import StructuredDataBatch
-
+from multimodal_particles.models.generative.transdimensional.structure import StructuredDataBatch
 
 class QM9Dataset(StructuredDatasetBase):
     name="qm9"
@@ -1895,14 +1894,14 @@ class QM9Dataset(StructuredDatasetBase):
             index = self.indeces[index]
 
         positions = self.datasets['train'].data['positions'][index, ...]
-        assert positions.shape == (self.graphical_structure.max_problem_dim, 3)
+        assert positions.shape == (self.graphical_structure.max_num_particles, 3)
         positions = positions / self.norm_values[0]
 
         if self.random_rotation:
             positions = random_rotation(positions.view(1, -1, 3))[0, ...]
 
         atom_types = self.datasets['train'].data['one_hot'][index, ...]
-        assert atom_types.shape == (self.graphical_structure.max_problem_dim, self.num_atom_types)
+        assert atom_types.shape == (self.graphical_structure.max_num_particles, self.num_atom_types)
         atom_types = atom_types.float() / self.norm_values[1]
 
         charges = self.datasets['train'].data['charges'][index, ...]
@@ -2006,7 +2005,7 @@ class QM9Dataset(StructuredDatasetBase):
 
 
                 self.condition_st_batch = StructuredDataBatch.create_copy(state_st_batch)    
-                n_nodes = self.condition_st_batch.gs.max_problem_dim
+                n_nodes = self.condition_st_batch.gs.max_num_particles
                 condition_flat_lats = torch.zeros_like(self.condition_st_batch.get_flat_lats()) # (B, 261)
                 condition_flat_lats[:, 3*n_nodes:3*n_nodes + 5 * total_cond_dim] = one_hot_cond.float().flatten() / self.norm_values[1]
                 self.condition_st_batch.set_flat_lats(condition_flat_lats)
@@ -2035,21 +2034,21 @@ class QM9Dataset(StructuredDatasetBase):
 class QM9GraphicalStructure(GraphicalStructureBase):
     
     def __init__(self, max_dim):
-        self.max_problem_dim = max_dim
+        self.max_num_particles = max_dim
         cfg = get_cfg()
         self.dataset_info = get_dataset_info(cfg.dataset, cfg.remove_h)
         histogram = self.dataset_info['n_nodes']
         self.nodes_dist = DistributionNodes(histogram)
 
     def shapes_without_onehot(self):
-        k = self.max_problem_dim
+        k = self.max_num_particles
         return [torch.Size([k, 3]), torch.Size([k]), torch.Size([k]), \
                 torch.Size([1]), torch.Size([1]), torch.Size([1]), \
                 torch.Size([1]), torch.Size([1]), torch.Size([1])
         ]
 
     def shapes_with_onehot(self):
-        k = self.max_problem_dim
+        k = self.max_num_particles
         return [torch.Size([k, 3]), torch.Size([k, 5]), torch.Size([k]),
                 torch.Size([1]), torch.Size([1]), torch.Size([1]), \
                 torch.Size([1]), torch.Size([1]), torch.Size([1])
@@ -2089,7 +2088,7 @@ class QM9GraphicalStructure(GraphicalStructureBase):
 
     def adjust_st_batch(self, st_batch):
         device = st_batch.get_device()
-        n_nodes = st_batch.gs.max_problem_dim
+        n_nodes = st_batch.gs.max_num_particles
         B = st_batch.B
         dims = st_batch.get_dims()
 
@@ -2132,7 +2131,7 @@ class QM9GraphicalStructure(GraphicalStructureBase):
     def get_auto_target(self, st_batch, adjust_val):
         B = st_batch.B
         device = st_batch.get_device()
-        n_nodes = st_batch.gs.max_problem_dim
+        n_nodes = st_batch.gs.max_num_particles
         assert adjust_val.shape == (B, 1, 3) # CoM of delxt
         delxt_CoM = adjust_val
 
@@ -2172,7 +2171,7 @@ class QM9GraphicalStructure(GraphicalStructureBase):
 
         distances_to_missing = torch.sum((x_del - missing_atom_pos.unsqueeze(1)) ** 2, dim=2) # (B, n_nodes)
 
-        atom_mask = torch.arange(st_batch.gs.max_problem_dim).view(1, -1) < delxt_st_batch.get_dims().view(-1, 1) # (B, n_nodes)
+        atom_mask = torch.arange(st_batch.gs.max_num_particles).view(1, -1) < delxt_st_batch.get_dims().view(-1, 1) # (B, n_nodes)
         atom_mask = atom_mask.to(device).long()
 
         distances_to_missing = atom_mask * distances_to_missing + (1-atom_mask) * 1e3

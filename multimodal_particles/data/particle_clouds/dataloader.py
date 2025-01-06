@@ -6,28 +6,46 @@ from collections import namedtuple
 from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
 from multimodal_particles.data.transdimensional_base import GraphicalStructureBase
 from multimodal_particles.models.architectures.egnn_utils import DistributionNodes
+from multimodal_particles.data.particle_clouds.utils import sizes_to_histograms
+from multimodal_particles.data.particle_clouds.jets import JetDataclass
+
+from multimodal_particles.utils.tensor_operations import (
+    create_and_apply_mask_2,
+    create_and_apply_mask_3
+)
 
 class MultimodalBridgeDataset(Dataset):
-    def __init__(self, data):
+
+    def __init__(self, data:JetDataclass, return_type='namedtuple'):
+        """
+        Initialize the dataset.
+
+        Args:
+            data: The data object containing source, target, and context attributes.
+            return_type: Specifies the return type for __getitem__.
+                         Options are 'namedtuple' or 'list'. Default is 'namedtuple'.
+        """
         self.data = data
         self.attributes = []
+        self.return_type = return_type
+        self.vocab_size_features = data.vocab_size_features
+        self.vocab_size_context = data.vocab_size_context
+        self.return_type = self.data.config.data.return_type
 
         # ...source
-
-        if hasattr(self.data.source, "continuous"):
+        if hasattr(self.data.source, "continuous") and self.return_type == "namedtuple":
             self.attributes.append("source_continuous")
             self.source_continuous = self.data.source.continuous
 
-        if hasattr(self.data.source, "discrete"):
+        if hasattr(self.data.source, "discrete") and self.return_type == "namedtuple":
             self.attributes.append("source_discrete")
             self.source_discrete = self.data.source.discrete
 
-        if hasattr(self.data.source, "mask"):
+        if hasattr(self.data.source, "mask") and self.return_type == "namedtuple":
             self.attributes.append("source_mask")
             self.source_mask = self.data.source.mask
 
         # ...target
-
         if hasattr(self.data.target, "continuous"):
             self.attributes.append("target_continuous")
             self.target_continuous = self.data.target.continuous
@@ -37,11 +55,11 @@ class MultimodalBridgeDataset(Dataset):
             self.target_discrete = self.data.target.discrete
 
         if hasattr(self.data.target, "mask"):
-            self.attributes.append("target_mask")
+            if self.return_type != "list":
+                self.attributes.append("target_mask")
             self.target_mask = self.data.target.mask
 
         # ...context
-
         if hasattr(self.data, "context_continuous"):
             self.attributes.append("context_continuous")
             self.context_continuous = self.data.context_continuous
@@ -50,36 +68,108 @@ class MultimodalBridgeDataset(Dataset):
             self.attributes.append("context_discrete")
             self.context_discrete = self.data.context_discrete
 
-        self.databatch = namedtuple("databatch", self.attributes)
+        self.databatch_namedtuple = namedtuple("databatch", self.attributes)
 
     def __getitem__(self, idx):
-        return self.databatch(*[getattr(self, attr)[idx] for attr in self.attributes])
+        """
+        Retrieve a data item by index.
+
+        Args:
+            idx: Index of the data item.
+
+        Returns:
+            if return_type == namedtuple
+                A namedtuple or list of tensors based on the return_type.
+            else return_type == list
+                A list with the first element equal to the number of particles
+        """
+        if self.return_type == 'namedtuple':
+            data = [getattr(self, attr)[idx] for attr in self.attributes]
+            return self.databatch_namedtuple(*data)
+        elif self.return_type == 'list':
+            target_mask = getattr(self, "target_mask")[idx]
+            n_particles = target_mask.squeeze().sum(axis=-1)
+            data = [n_particles]
+            for attr in self.attributes:
+                if attr != "target_mask":
+                    value = getattr(self, attr)[idx]
+                    if attr in ['source_discrete', 'target_discrete']:
+                        # Apply one-hot encoding for discrete data
+                        n_classes = self.vocab_size_features
+                        one_hot = np.eye(n_classes)[value]  # Convert to one-hot encoding
+                        value = torch.tensor(one_hot, dtype=torch.float32)  # Convert to tensor
+                        value = value.squeeze()
+                    if attr == "context_discrete":
+                        n_classes = self.vocab_size_context
+                        one_hot = np.eye(n_classes)[value]  # Convert to one-hot encoding
+                        value = torch.tensor(one_hot, dtype=torch.float32)  # Convert to tensor
+                        value = value.squeeze()
+                    data.append(value)
+            return data
+        else:
+            raise ValueError("Invalid return_type. Choose 'namedtuple' or 'list'.")
 
     def __len__(self):
+        """
+        Get the length of the dataset.
+
+        Returns:
+            Length of the dataset (number of items).
+        """
         return len(self.data.target)
 
     def __iter__(self):
+        """
+        Iterate over the dataset.
+
+        Yields:
+            Items of the dataset one by one.
+        """
         for idx in range(len(self)):
             yield self[idx]
+
+    def get_available_keys(self):
+        """
+        Get the names of keys (attributes) available in the dataset.
+
+        Returns:
+            List of attribute names.
+        """
+        return self.attributes
 
 class MultimodalBridgeDataloaderModule:
     
     def __init__(
-        self, config, dataclass, batch_size: int = None, data_split_frac: tuple = None
+        self, 
+        config:MultimodalBridgeMatchingConfig, 
+        jetdataset, 
+        batch_size: int = None, 
+        data_split_frac: tuple = None
     ):
-        self.dataclass = dataclass
+        self.dataclass = jetdataset
         self.config = config
-        self.dataset = MultimodalBridgeDataset(dataclass)
+        self.dataset = MultimodalBridgeDataset(jetdataset,return_type=config.data.return_type)
+
+        # sets metadata after reading data
+        self.histogram_target = sizes_to_histograms(self.dataset.target_mask.squeeze().sum(axis=1))
+        if self.config.data.return_type == "namedtuple":
+            self.histogram_source = sizes_to_histograms(self.dataset.source_mask.squeeze().sum(axis=1))
 
         self.data_split = (
-            self.config.train.data_split_frac
+            self.config.data.data_split_frac
             if data_split_frac is None
             else data_split_frac
         )
         self.batch_size = (
-            self.config.train.batch_size if batch_size is None else batch_size
+            self.config.data.batch_size if batch_size is None else batch_size
         )
-        self.dataloader()
+        self.set_dataloader()
+
+        # graphical structure is an object that allows the destruction and creation of particles 
+        # as defined in the transdimensional code is only necesary for transdimensional classes
+        if hasattr(self.config.data,"graphical_structure"):
+            self.set_batch_handlers()
+            self.graphical_structure = JetsGraphicalStructure(self)
 
     def train_val_test_split(self, shuffle=False):
         assert (
@@ -104,7 +194,7 @@ class MultimodalBridgeDataloaderModule:
 
         return train_set, valid_set, test_set
 
-    def dataloader(self):
+    def set_dataloader(self):
         print("INFO: building dataloaders...")
         print(
             "INFO: train/val/test split ratios: {}/{}/{}".format(
@@ -134,7 +224,7 @@ class MultimodalBridgeDataloaderModule:
         )
 
     @staticmethod
-    def random_databatch(config):
+    def random_databatch(config:MultimodalBridgeMatchingConfig):
         """
         For testing this generates a random databatch with the expected 
         properties of the config, without the need of loading data and 
@@ -150,7 +240,7 @@ class MultimodalBridgeDataloaderModule:
             'target_discrete',
             'target_mask'
         ])
-        batch_size = config.train.batch_size
+        batch_size = config.data.batch_size
         max_num_particles = config.data.max_num_particles
         dim_continuous = config.data.dim_features_continuous
         dim_discrete = config.data.dim_features_discrete
@@ -167,68 +257,157 @@ class MultimodalBridgeDataloaderModule:
         )
         return particle_data
     
-    @staticmethod
-    def update_model_config(full_config,model_config:MultimodalBridgeMatchingConfig):        
-        model_config.dim_features_continuous = full_config.data.dim.features_continuous
-        model_config.dim_features_discrete = full_config.data.dim.features_discrete
-        model_config.dim_context_continuous = full_config.data.dim.context_continuous
-        model_config.dim_context_discrete = full_config.data.dim.context_discrete
-
-        model_config.vocab_size_features = full_config.data.vocab_size.features
-        model_config.vocab_size_context = full_config.data.vocab_size.context
+    def update_config(self,model_config:MultimodalBridgeMatchingConfig):
+        model_config.data.target_info["hist_num_particles"] = self.histogram_target
+        if self.config.data.return_type == "namedtuple":
+            model_config.data.source_info["hist_num_particles"] = self.histogram_source
         return model_config
+    
+    def set_without_onehot_shapes(self,names_in_batch):
+        config = self.config
+        max_num_particles = config.data.max_num_particles
+        without_onehot_shapes = []
+        for name_index, name in enumerate(names_in_batch):
+            if "target_continuous" == name:
+                without_onehot_shapes.append(torch.Size([max_num_particles, config.data.dim_features_continuous]))
+            if "target_mask" == name:
+                without_onehot_shapes.append(torch.Size([max_num_particles, 1]))
+            if "context_continuous" == name:
+                without_onehot_shapes.append(torch.Size([max_num_particles, config.data.dim_context_continuous]))
+            if "context_discrete" == name:
+                without_onehot_shapes.append(torch.Size([max_num_particles, config.data.vocab_size_features]))
+        self.without_onehot_shapes = without_onehot_shapes
+
+    def set_onehot_shapes(self,names_in_batch):
+        config = self.config
+        max_num_particles = config.data.max_num_particles
+        with_onehot_shapes = []
+        for name_index, name in enumerate(names_in_batch):
+            if "target_continuous" == name:
+                with_onehot_shapes.append(torch.Size([max_num_particles, config.data.dim_features_continuous]))
+            if "target_discrete" == name:
+                with_onehot_shapes.append(torch.Size([max_num_particles, config.data.vocab_size_features]))
+            if "target_mask" == name:
+                with_onehot_shapes.append(torch.Size([max_num_particles, 1]))
+            if "context_continuous" == name:
+                with_onehot_shapes.append(torch.Size([max_num_particles, config.data.dim_context_continuous]))
+            if "context_discrete" == name:
+                with_onehot_shapes.append(torch.Size([max_num_particles, config.data.vocab_size_features]))
+        self.with_onehot_shapes = with_onehot_shapes
+
+    def set_batch_handlers(self):
+        """
+        For the transdimensional structure classes, one needs to known which elements of the
+        batch list are observed and one hot, as well as sizes and names
+        """
+        names_in_batch = self.dataset.get_available_keys()
+        self.names_in_batch = names_in_batch
+        self.observed = np.zeros(len(names_in_batch)).astype(int)
+        self.is_onehot = np.zeros(len(names_in_batch)).astype(int)
+        self.exists = np.ones(len(names_in_batch)).astype(int)
+        self.name_to_index = dict(zip(names_in_batch,range(len(names_in_batch))))
+
+        if "target_discrete" in names_in_batch:
+            self.is_onehot[self.name_to_index["target_discrete"]] = 1
+        
+        if "context_continuous" in names_in_batch:
+            self.observed[self.name_to_index["context_continuous"]] = 1
+
+        if "context_discrete" in names_in_batch:
+            self.observed[self.name_to_index["context_discrete"]] = 1
+
+        self.set_onehot_shapes(names_in_batch)
+        self.set_without_onehot_shapes(names_in_batch)
 
 class JetsGraphicalStructure(GraphicalStructureBase):
     
-    def __init__(self, max_dim, histogram):
-        self.max_problem_dim = max_dim
+    def __init__(
+            self,
+            datamodule:MultimodalBridgeDataloaderModule,
+        ):
+        config = datamodule.config
+        histogram = datamodule.histogram_target
+
+        self.names_in_batch = datamodule.names_in_batch
+        self.max_num_particles = config.data.max_num_particles
+        self.num_jets = config.data.num_jets
+
+        # dimensions
+        self.dim_features_continuous = config.data.dim_features_continuous
+        self.dim_features_discrete = config.data.dim_features_discrete
+        self.dim_context_continuous = config.data.dim_context_continuous
+        self.dim_context_discrete = config.data.dim_context_discrete
+        self.vocab_size_features = config.data.vocab_size_features
+        self.vocab_size_context = config.data.vocab_size_context
+
+        self.with_onehot_shapes = datamodule.with_onehot_shapes
+        self.without_onehot_shapes = datamodule.without_onehot_shapes
+
         self.nodes_dist = DistributionNodes(histogram)
 
     def shapes_without_onehot(self):
-        k = self.max_problem_dim
-        return [torch.Size([k, 3]), torch.Size([k]), torch.Size([k]), \
-                torch.Size([1]), torch.Size([1]), torch.Size([1]), \
-                torch.Size([1]), torch.Size([1]), torch.Size([1])
-        ]
+        """
+        Returns the shapes of the databatches without one-hot encoding dynamically based on attributes.
+
+        Returns:
+            List[torch.Size]: Shapes of the data tensors without one-hot encoding.
+        """
+        return self.without_onehot_shapes
 
     def shapes_with_onehot(self):
-        k = self.max_problem_dim
-        return [torch.Size([k, 3]), torch.Size([k, 5]), torch.Size([k]),
-                torch.Size([1]), torch.Size([1]), torch.Size([1]), \
-                torch.Size([1]), torch.Size([1]), torch.Size([1])
-        ]
+        """
+        Returns the shapes of the databatches with one-hot encoding dynamically based on attributes.
 
-    def remove_problem_dims(self, data, new_dims):
-        pos, atom_type, charge, alpha, homo, lumo, gap, mu, Cv = data
+        Returns:
+            List[torch.Size]: Shapes of the data tensors with one-hot encoding.
+        """
+        return self.with_onehot_shapes
 
+    def remove_problem_dims(self, data, new_dims,name,name_to_index):
+        # pos, atom_type, charge, alpha, homo, lumo, gap, mu, Cv = data
 
-        B = pos.shape[0]
-        assert pos.shape == (B, *self.shapes_with_onehot()[0])
-        assert atom_type.shape == (B, *self.shapes_with_onehot()[1])
-        assert charge.shape == (B, *self.shapes_with_onehot()[2])
+        #B = pos.shape[0]
+        #assert atom_type.shape == (B, *self.shapes_with_onehot()[1])
+        #assert charge.shape == (B, *self.shapes_with_onehot()[2])
 
-        # for b_idx in range(B):
-        #     pos[b_idx, new_dims[b_idx]:, :] = 0.0
-        #     cats[b_idx, new_dims[b_idx]:, :] = 0.0
-        #     ints[b_idx, new_dims[b_idx]:] = 0.0
-
-        # pos, cats, ints = data
-        device = pos.device
+        device = data[0].device
         new_dims_dev = new_dims.to(device)
 
-        pos_mask = torch.arange(pos.shape[1], device=device).view(1, -1, 1).repeat(pos.shape[0], 1, pos.shape[2])
-        pos_mask = (pos_mask < new_dims_dev.view(-1, 1, 1))
-        pos = pos * pos_mask
+        databatch_with_dimensions_removed = []
+        for name_index, name in enumerate(self.names_in_batch):
+            if "target_continuous" == name:
+                tensor_index = name_to_index["target_continuous"]
+                one_tensor_from_databatch = data[tensor_index]
+                B = one_tensor_from_databatch.size(0)
+                new_tensor = create_and_apply_mask_3(one_tensor_from_databatch,new_dims_dev,device)
+                databatch_with_dimensions_removed.append(new_tensor)
+                #assert pos.shape == (B, *self.shapes_with_onehot()[0])
+            if "target_discrete" == name:
+                tensor_index = name_to_index["target_continuous"]
+                one_tensor_from_databatch = data[tensor_index]
+                B = one_tensor_from_databatch.size(0)
+                new_tensor = create_and_apply_mask_3(one_tensor_from_databatch,new_dims_dev,device)
+                databatch_with_dimensions_removed.append(new_tensor)        
+            if "target_mask" == name:
+                tensor_index = name_to_index["target_continuous"]
+                one_tensor_from_databatch = data[tensor_index]
+                B = one_tensor_from_databatch.size(0)
+                new_tensor = create_and_apply_mask_3(one_tensor_from_databatch,new_dims_dev,device)
+                databatch_with_dimensions_removed.append(new_tensor)        
+            if "context_continuous" == name:
+                tensor_index = name_to_index["target_continuous"]
+                one_tensor_from_databatch = data[tensor_index]
+                B = one_tensor_from_databatch.size(0)
+                new_tensor = create_and_apply_mask_3(one_tensor_from_databatch,new_dims_dev,device)
+                databatch_with_dimensions_removed.append(new_tensor)
+            if "context_discrete" == name:
+                tensor_index = name_to_index["target_continuous"]
+                one_tensor_from_databatch = data[tensor_index]
+                B = one_tensor_from_databatch.size(0)
+                new_tensor = create_and_apply_mask_3(one_tensor_from_databatch,new_dims_dev,device)
+                databatch_with_dimensions_removed.append(new_tensor)
 
-        atom_type_mask = torch.arange(atom_type.shape[1], device=device).view(1, -1, 1).repeat(atom_type.shape[0], 1, atom_type.shape[2])
-        atom_type_mask = (atom_type_mask < new_dims_dev.view(-1, 1, 1))
-        atom_type = atom_type * atom_type_mask
-
-        charge_mask = torch.arange(charge.shape[1], device=device).view(1, -1).repeat(charge.shape[0], 1)
-        charge_mask = (charge_mask < new_dims_dev.view(-1, 1))
-        charge = charge * charge_mask
-
-        return pos, atom_type, charge, alpha, homo, lumo, gap, mu, Cv
+        return databatch_with_dimensions_removed
 
     def adjust_st_batch(self, st_batch):
         device = st_batch.get_device()

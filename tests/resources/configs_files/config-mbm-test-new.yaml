@@ -28,7 +28,10 @@ data:
   dim_context_discrete: 0      
   vocab_size_features: 8 
   vocab_size_context: 0  
-
+  return_type: namedtuple # list
+  batch_size: 64
+  data_split_frac: [0.8, 0.2, 0.0]  # train / val / test
+  
 bridge:
   continuous: LinearUniformBridge
   discrete: TelegraphBridge
@@ -58,8 +61,6 @@ encoder:
   add_discrete_head: true
 
 train:
-  batch_size: 64
-  data_split_frac: [0.8, 0.2, 0.0]  # train / val / test
   epochs: 200
   gradient_clip_val: 1.0
   optimizer_name: AdamW

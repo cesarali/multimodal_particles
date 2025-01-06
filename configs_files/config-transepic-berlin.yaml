@@ -10,47 +10,63 @@ augment_kwargs:
 batch_gpu: null
 batch_size: 64
 cudnn_benchmark: true
-data_loader_kwargs:
-  num_workers: 8
-  pin_memory: true
-  prefetch_factor: 2
-dataset_kwargs:
-  atom_type_norm: 0.25
-  charge_norm: 10.0
-  class_name: training.dataset.QM9Dataset
-  condition_on_alpha: true
-  only_second_half: true
-  pos_norm: 1.0
-  random_rotation: false
-  shuffle_node_ordering: true
-  subset: -1
-  train_or_valid: train
+data:
+  batch_size: 1024
+  data_split_frac:
+  - 0.8
+  - 0.2
+  - 0.0
+  dim_context_continuous: 0
+  dim_context_discrete: 0
+  dim_features_continuous: 3
+  dim_features_discrete: 1
+  exist: null
+  graphical_structure: ''
+  max_num_particles: 128
+  min_num_particles: 0
+  num_jets: 1000
+  observed: null
+  return_type: namedtuple
+  source_info:
+    hist_num_particles: null
+    stats: null
+  source_masks_from_target_masks: true
+  source_name: GaussNoise
+  source_path: null
+  source_preprocess_continuous: null
+  source_preprocess_discrete: tokens
+  target_info:
+    hist_num_particles: null
+    stats: null
+  target_name: AspenOpenJets
+  target_path:
+  - /home/cesarali/Codes/multimodal_particles/data/2016H_job0.h5
+  target_preprocess_continuous: standardize
+  target_preprocess_discrete: tokens
+  vocab_size_context: 0
+  vocab_size_features: 8
 device: cuda
-dim_context_continuous: 0
-dim_context_discrete: 0
-dim_features_continuous: 3
-dim_features_discrete: 1
 distributed: false
 ema_halflife_kimg: 500
 encoder:
   activation: SELU
   add_discrete_head: true
-  context_continuous_embedding: null
-  context_discrete_embedding: null
+  dim_emb_context_continuous: 0
+  dim_emb_context_discrete: 0
+  dim_emb_features_continuous: 16
+  dim_emb_features_discrete: 16
+  dim_emb_time: 16
+  dim_hidden_glob: 16
+  dim_hidden_local: 16
   dropout: 0.1
-  emb_context_continuous: 0
-  emb_context_discrete: 0
-  emb_features_continuous: 16
-  emb_features_discrete: 16
-  emb_time: 16
-  features_continuous_embedding: Linear
-  features_discrete_embedding: Embedding
-  hidden_glob: 16
-  hidden_local: 16
+  embedding_context_continuous: null
+  embedding_context_discrete: null
+  embedding_features_continuous: Linear
+  embedding_features_discrete: Embedding
+  embedding_time: SinusoidalPositionalEncoding
   name: MultiModalEPiC
   num_blocks: 2
   skip_connection: true
-  time_embedding: SinusoidalPositionalEncoding
 grad_conditioner_kwargs:
   class_name: training.grad_conditioning.MoleculeJump
   grad_norm_clip: 1.0
@@ -75,8 +91,6 @@ loss_kwargs:
   vp_sde_beta_min: 0.1
   x0_logit_ce_loss_weight: 1.0
 loss_scaling: 1.0
-max_num_particles: 128
-min_num_particles: 0
 optimizer_kwargs:
   betas:
   - 0.9
@@ -131,5 +145,3 @@ structure_kwargs:
   - 1
   - 1
 total_kimg: 200000
-vocab_size_context: 0
-vocab_size_features: 8

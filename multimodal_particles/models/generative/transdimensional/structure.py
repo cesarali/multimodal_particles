@@ -1,6 +1,10 @@
 import torch
 import numpy as np
 
+#==================================================================
+# QM9 original structures
+#==================================================================
+
 class StructuredDataBatch():
     def __init__(self, tuple_batch, dims, observed, exist, is_onehot, graphical_structure):
         """
@@ -42,7 +46,6 @@ class StructuredDataBatch():
     def create_copy(cls, original):
         tuple_batch_copy = tuple(t.clone() for t in original.tuple_batch)
         return StructuredDataBatch(tuple_batch_copy, original._dims.clone(), original.observed, original.exist, original.is_onehot, original.gs)
-
 
     def get_tuple_batch(self):
         return self.tuple_batch
@@ -100,7 +103,7 @@ class StructuredDataBatch():
         self.tuple_batch = tuple(tb if o else d for d, tb, o in zip(data, self.tuple_batch, self.observed))
 
     def add_dim_where_not_max(self):
-        self.set_dims(self._dims + (self._dims < self.gs.max_problem_dim))
+        self.set_dims(self._dims + (self._dims < self.gs.max_num_particles))
 
     def add_one_dim(self):
         # Adds one more dimension to each item in the batch
@@ -196,7 +199,7 @@ class StructuredDataBatch():
         B = problem_dim_data.shape[0]
         
         tmp = StructuredDataBatch.create_copy(self)
-        tmp.set_dims(tmp.gs.max_problem_dim * torch.ones_like(tmp._dims))
+        tmp.set_dims(tmp.gs.max_num_particles * torch.ones_like(tmp._dims))
 
         problem_dim_data_counter = -1
         while True:
@@ -222,7 +225,7 @@ class Structure():
     #dataset_is_onehot = [0, 1, 0, 0, 0, 0, 0, 0, 0]
     #names = ["pos", "atom_type", "charges", "alpha", "homo", "lumo", "gap", "mu", "Cv"]
 
-    def __init__(self, exist, observed, dataset, graphical_structure=None):  #, shapes=None, example=None, names=None):
+    def __init__(self, exist, observed, dataset):  #, shapes=None, example=None, names=None):
         """
         Stores metadata about tensor shapes and observedness. One of shapes or example (without batch dimension)
         must be provided to extract the shapes from.
@@ -236,14 +239,12 @@ class Structure():
         self.names = [n for n, e in zip(names, self.exist) if e]
         print("Created structure with observedness", self.observed)
 
-        if graphical_structure is not None:
-            self.graphical_structure = graphical_structure
-        else:
-            if hasattr(dataset, "graphical_structure"):
-                self.graphical_structure = dataset.graphical_structure
+        if hasattr(dataset, "graphical_structure"):
+            self.graphical_structure = dataset.graphical_structure
 
-    def set_varying_problem_dims(self, problem_dims, batch_max_problem_dim):
-        self.graphical_structure.set_varying_problem_dims(problem_dims, batch_max_problem_dim)
+
+    def set_varying_problem_dims(self, problem_dims, batch_max_num_particles):
+        self.graphical_structure.set_varying_problem_dims(problem_dims, batch_max_num_particles)
         self.shapes = self.graphical_structure.shapes
 
     def add_one_to_problem_dims(self):
@@ -281,9 +282,9 @@ class Structure():
     def get_exist_mask_after_deleting_dim(self, include_obs, include_onehot_channels):
         problem_dims = self.graphical_structure.problem_dims
         reduced_dims = (self.graphical_structure.problem_dims - 1).clamp(min=1)
-        self.set_varying_problem_dims(reduced_dims, self.graphical_structure.batch_max_problem_dim)
+        self.set_varying_problem_dims(reduced_dims, self.graphical_structure.batch_max_num_particles)
         exist_after_deleting_next_mask = self.get_exist_mask(include_obs, include_onehot_channels)
-        self.set_varying_problem_dims(problem_dims, self.graphical_structure.batch_max_problem_dim)
+        self.set_varying_problem_dims(problem_dims, self.graphical_structure.batch_max_num_particles)
         return exist_after_deleting_next_mask
 
     def get_next_dim_deleted_mask(self, include_obs, include_onehot_channels):
@@ -292,14 +293,14 @@ class Structure():
     def get_next_dim_added_mask(self, include_obs, include_onehot_channels):
         """
             Gets the mask for new dimensions that get added when increaseing the problem dimension by 1 
-            Assumes batch_max_problem_dim is big enough to hold the bigger mask
+            Assumes batch_max_num_particles is big enough to hold the bigger mask
         """
         current_problem_dims = self.graphical_structure.problem_dims
-        current_batch_max_problem_dim = self.graphical_structure.batch_max_problem_dim
+        current_batch_max_num_particles = self.graphical_structure.batch_max_num_particles
 
-        self.set_varying_problem_dims(current_problem_dims+1, current_batch_max_problem_dim)
+        self.set_varying_problem_dims(current_problem_dims+1, current_batch_max_num_particles)
         big_mask = self.get_exist_mask(include_obs, include_onehot_channels)
-        self.set_varying_problem_dims(current_problem_dims, current_batch_max_problem_dim)
+        self.set_varying_problem_dims(current_problem_dims, current_batch_max_num_particles)
         small_mask = self.get_exist_mask(include_obs, include_onehot_channels)
 
         return big_mask - small_mask

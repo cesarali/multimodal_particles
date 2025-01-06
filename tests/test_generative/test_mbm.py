@@ -24,7 +24,7 @@ def test_random_databatch():
     # create datamodule
     jets = JetDataclass(config=model_config)
     jets.preprocess()
-    dataloader = MultimodalBridgeDataloaderModule(config=model_config, dataclass=jets)
+    dataloader = MultimodalBridgeDataloaderModule(config=model_config, jetdataset=jets)
     databatch = next(dataloader.train.__iter__())
 
     # Check that all fields have the same shape

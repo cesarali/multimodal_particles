@@ -18,13 +18,18 @@ def test_databatch():
     #obtain configs
     config_file_path = os.path.join(test_resources_dir, "configs_files", "config-mbm-test.yaml")
     model_config = MultimodalBridgeMatchingConfig.from_yaml(config_file_path)
-    
+    model_config.data.return_type = "namedtuple"
+
     # create datamodule
     jets = JetDataclass(config=model_config)
     jets.preprocess()
-    dataloader = MultimodalBridgeDataloaderModule(config=model_config, dataclass=jets)
-    
+    dataloader = MultimodalBridgeDataloaderModule(config=model_config, jetdataset=jets)
+    model_config = dataloader.update_config(model_config)
+
     databatch = next(dataloader.train.__iter__())
+    print(len(databatch))
+    print(type(databatch))
+    print(dataloader.dataset.attributes)
     assert databatch is not None
     
 if __name__=="__main__":

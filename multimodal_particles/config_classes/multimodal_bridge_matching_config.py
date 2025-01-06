@@ -5,8 +5,6 @@ from typing import Optional, Dict, List, Union
 
 @dataclass
 class TrainingConfig:
-    batch_size: int = 1024
-    data_split_frac: List[float] = field(default_factory=lambda: [0.8, 0.2, 0.0])
     epochs: int = 200
     gradient_clip_val: float = 1.0
     optimizer_name: str = "AdamW"
@@ -23,7 +21,8 @@ class TrainingConfig:
     })
 
 @dataclass
-class DataConfig:
+class JetsDataConfig:
+    # target
     target_name: str = "AspenOpenJets"
     target_path: List[str] = field(default_factory=lambda: None)
     target_preprocess_continuous: str = "standardize"
@@ -32,6 +31,7 @@ class DataConfig:
         "stats": None, 
         "hist_num_particles": None # dict with histogram of number of particles
     })
+    # source
     source_name: str = "GaussNoise"
     source_path: List[str] = field(default_factory=lambda: None)
     source_preprocess_continuous: str = None
@@ -41,6 +41,7 @@ class DataConfig:
         "hist_num_particles": None # dict with histogram of number of particles
     })
     source_masks_from_target_masks: bool = True # if True, source mask is sampled from multinomial dist from number of target particles
+    # dimensions 
     min_num_particles: int=0
     max_num_particles: int=128
     num_jets: int=1000
@@ -50,7 +51,12 @@ class DataConfig:
     dim_context_discrete: int = 0
     vocab_size_features: int = 8
     vocab_size_context: int = 0
-
+    # type of databatch
+    return_type: str = "namedtuple" # list  # if list the dataloader is prepared for transdimensional and does not send context
+    
+    batch_size: int = 1024
+    data_split_frac: List[float] = field(default_factory=lambda: [0.8, 0.2, 0.0])
+    
 @dataclass
 class BridgeConfig:
     continuous: str = "LinearUniformBridge"
@@ -85,7 +91,7 @@ class EncoderConfig:
 class MultimodalBridgeMatchingConfig:
     name_str: str = "ExampleModel"
     bridge: BridgeConfig = field(default_factory=BridgeConfig)
-    data: DataConfig = field(default_factory=DataConfig)
+    data: JetsDataConfig = field(default_factory=JetsDataConfig)
     encoder: EncoderConfig = field(default_factory=EncoderConfig)
     train: TrainingConfig = field(default_factory=TrainingConfig)
 
@@ -97,7 +103,7 @@ class MultimodalBridgeMatchingConfig:
         return MultimodalBridgeMatchingConfig(
             name_str=config_dict.get("name_str", "ExampleModel"),
             bridge=BridgeConfig(**config_dict["bridge"]),
-            data=DataConfig(**config_dict["data"]),
+            data=JetsDataConfig(**config_dict["data"]),
             encoder=EncoderConfig(**config_dict["encoder"]),
             train=TrainingConfig(**config_dict["train"])
         )

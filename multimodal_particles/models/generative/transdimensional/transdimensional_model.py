@@ -1,6 +1,12 @@
 import torch
 from torch import nn
 import lightning as L
+
+from multimodal_particles.data.particle_clouds.dataloader import (
+    MultimodalBridgeDataloaderModule,
+    JetsGraphicalStructure
+)
+
 from multimodal_particles.models.architectures.epic import EPiC
 from multimodal_particles.models.generative.transdimensional.structure import Structure
 from multimodal_particles.config_classes.transdimensional_config_unconditional import TransdimensionalEpicConfig
@@ -27,9 +33,9 @@ class TransdimensionalEPiC(nn.Module):
 
     def __init__(self, config:TransdimensionalEpicConfig):
         super().__init__()
-        self.dim_features_continuous = config.dim_features_continuous
-        self.dim_features_discrete = config.dim_features_discrete
-        self.vocab_size = config.vocab_size_features
+        self.dim_features_continuous = config.data.dim_features_continuous
+        self.dim_features_discrete = config.data.dim_features_discrete
+        self.vocab_size = config.data.vocab_size_features
 
         self.epic = EPiC(config)
         self.add_discrete_head = config.encoder.add_discrete_head
@@ -68,7 +74,11 @@ class TransdimensionalJumpDiffusion(L.LightningModule):
     from https://github.com/andrew-cr/jump-diffusion
 
     """
-    def __init__(self,config:TransdimensionalEpicConfig):
+    def __init__(
+            self,
+            config:TransdimensionalEpicConfig,
+            datamodule:MultimodalBridgeDataloaderModule
+        ):
         super().__init__()
         self.config = config
         self._set_up()
@@ -84,12 +94,12 @@ class TransdimensionalJumpDiffusion(L.LightningModule):
 
         self.forward_rate = get_forward_rate(
             self.config.loss_kwargs.rate_function_name,
-            self.config.max_num_particles,
+            self.config.data.max_num_particles,
             self.config.loss_kwargs.rate_cut_t)
 
         self.noise_schedule = get_noise_schedule(
             self.config.loss_kwargs.noise_schedule_name,
-            self.config.max_num_particles, 
+            self.config.data.max_num_particles, 
             self.config.loss_kwargs.vp_sde_beta_min,
             self.config.loss_kwargs.vp_sde_beta_max)
         
