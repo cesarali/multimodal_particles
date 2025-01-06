@@ -2,7 +2,7 @@ import os
 import pytest
 from pprint import pprint
 from multimodal_particles.utils.experiment_configs import load_config
-from multimodal_particles.data.particle_clouds.dataloader import MultimodalBridgeDataloaderModule
+from multimodal_particles.data.particle_clouds.jets_dataloader import JetsDataloaderModule
 from multimodal_particles.data.particle_clouds.jets import JetDataclass
 from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
 from multimodal_particles.models.generative.multimodal_bridge_matching import MultiModalBridgeMatching
@@ -23,7 +23,7 @@ def test_databatch():
     # create datamodule
     jets = JetDataclass(config=model_config)
     jets.preprocess()
-    dataloader = MultimodalBridgeDataloaderModule(config=model_config, jetdataset=jets)
+    dataloader = JetsDataloaderModule(config=model_config, jetdataset=jets)
     model_config = dataloader.update_config(model_config)
 
     databatch = next(dataloader.train.__iter__())

@@ -10,7 +10,7 @@ from lightning.pytorch.loggers import MLFlowLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
 
 from multimodal_particles.utils.experiment_files import ExperimentsFiles
-from multimodal_particles.data.particle_clouds.dataloader import MultimodalBridgeDataloaderModule 
+from multimodal_particles.data.particle_clouds.jets_dataloader import JetsDataloaderModule 
 from multimodal_particles.models.generative.multimodal_bridge_matching import MultiModalBridgeMatching
 
 from abc import ABC, abstractmethod
@@ -22,7 +22,7 @@ class BasicLightningExperiment(ABC):
     """
     experiment_name: str = ""
     experiment_files: ExperimentsFiles
-    datamodule: MultimodalBridgeDataloaderModule
+    datamodule: JetsDataloaderModule
     model: MultiModalBridgeMatching
     set_to_train: bool = False
     logger: MLFlowLogger = None

@@ -11,7 +11,7 @@ batch_gpu: null
 batch_size: 64
 cudnn_benchmark: true
 data:
-  batch_size: 1024
+  batch_size: 4
   data_split_frac:
   - 0.8
   - 0.2
@@ -24,7 +24,7 @@ data:
   graphical_structure: ''
   max_num_particles: 128
   min_num_particles: 0
-  num_jets: 1000
+  num_jets: 100
   observed: null
   return_type: namedtuple
   source_info:
@@ -39,8 +39,7 @@ data:
     hist_num_particles: null
     stats: null
   target_name: AspenOpenJets
-  target_path:
-  - /home/cesarali/Codes/multimodal_particles/data/2016H_job0.h5
+  target_path: null
   target_preprocess_continuous: standardize
   target_preprocess_discrete: tokens
   vocab_size_context: 0

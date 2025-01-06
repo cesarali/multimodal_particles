@@ -2,7 +2,7 @@ import yaml
 from multimodal_particles.training.basic_experiments import BasicLightningExperiment
 from multimodal_particles.utils.experiment_configs import Configs
 from multimodal_particles.data.particle_clouds.jets import JetDataclass
-from multimodal_particles.data.particle_clouds.dataloader import MultimodalBridgeDataloaderModule 
+from multimodal_particles.data.particle_clouds.jets_dataloader import JetsDataloaderModule 
 
 from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
 from multimodal_particles.models.generative.multimodal_bridge_matching import MultiModalBridgeMatching
@@ -19,11 +19,11 @@ class MultimodalBridgeMatchingExperiment(BasicLightningExperiment):
     def setup_datamodule(self):
         jets = JetDataclass(config=self.config)
         jets.preprocess()
-        self.datamodule = MultimodalBridgeDataloaderModule(config=self.config, jetdataset=jets)
+        self.datamodule = JetsDataloaderModule(config=self.config, jetdataset=jets)
 
     def setup_model(self):
         self.model_config = MultimodalBridgeMatchingConfig.from_full_config(self.config)
-        self.model_config = MultimodalBridgeDataloaderModule.update_config(self.config,self.model_config)
+        self.model_config = JetsDataloaderModule.update_config(self.config,self.model_config)
         self.model = MultiModalBridgeMatching(self.model_config)        
     
     def save_test_samples(self):

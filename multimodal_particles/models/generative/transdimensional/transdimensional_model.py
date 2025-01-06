@@ -2,8 +2,8 @@ import torch
 from torch import nn
 import lightning as L
 
-from multimodal_particles.data.particle_clouds.dataloader import (
-    MultimodalBridgeDataloaderModule,
+from multimodal_particles.data.particle_clouds.jets_dataloader import (
+    JetsDataloaderModule,
     JetsGraphicalStructure
 )
 
@@ -77,7 +77,7 @@ class TransdimensionalJumpDiffusion(L.LightningModule):
     def __init__(
             self,
             config:TransdimensionalEpicConfig,
-            datamodule:MultimodalBridgeDataloaderModule
+            datamodule:JetsDataloaderModule
         ):
         super().__init__()
         self.config = config

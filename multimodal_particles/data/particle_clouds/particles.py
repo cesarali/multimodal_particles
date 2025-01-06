@@ -1,7 +1,9 @@
+import os
 import torch
 import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from multimodal_particles import test_resources_dir
 
 plt.rcParams["mathtext.fontset"] = "cm"
 plt.rcParams["figure.autolayout"] = False
@@ -42,7 +44,10 @@ class ParticleClouds:
             )
 
         elif "AspenOpenJets" in dataset:
-            assert data_paths is not None, "Specify the path to the AOJ dataset"
+            #assert data_paths is not None, "Specify the path to the AOJ dataset"
+            if data_paths is None:
+                resources_data_path = os.path.join(test_resources_dir,"data","2016H_job0_mini.h5")
+                data_paths = [resources_data_path]
             self.continuous, self.discrete, self.mask = extract_aoj_features(
                 data_paths, **data_params
             )

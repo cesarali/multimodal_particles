@@ -8,8 +8,7 @@ experiment:
 #...Data parameters
 data:
   target_name: AspenOpenJets
-  target_path:
-      - /home/cesarali/Codes/multimodal_particles/data/2016H_job0.h5
+  target_path: null
       # - /home/df630/CMB/data/AOJ/2016H_job1.h5
       # - /home/df630/CMB/data/AOJ/2016H_job2.h5
   target_preprocess_continuous: standardize
@@ -21,7 +20,7 @@ data:
   source_masks_from_target_masks: true # if True, source mask is sampled from multinomial dist from number of target particles
   min_num_particles: 0
   max_num_particles: 128
-  num_jets: 1000
+  num_jets: 100
   dim_features_continuous: 3             # pt, eta_rel, phi_phi
   dim_features_discrete: 1               # flavor x charge
   dim_context_continuous: 0
@@ -29,6 +28,7 @@ data:
   vocab_size_features: 8 
   vocab_size_context: 0  
   return_type: namedtuple # list
+  
   batch_size: 64
   data_split_frac: [0.8, 0.2, 0.0]  # train / val / test
   
@@ -61,7 +61,7 @@ encoder:
   add_discrete_head: true
 
 train:
-  epochs: 200
+  epochs: 3
   gradient_clip_val: 1.0
   optimizer_name: AdamW
   lr: 0.001

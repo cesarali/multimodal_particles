@@ -137,7 +137,7 @@ class MultimodalBridgeDataset(Dataset):
         """
         return self.attributes
 
-class MultimodalBridgeDataloaderModule:
+class JetsDataloaderModule:
     
     def __init__(
         self, 
@@ -323,7 +323,7 @@ class JetsGraphicalStructure(GraphicalStructureBase):
     
     def __init__(
             self,
-            datamodule:MultimodalBridgeDataloaderModule,
+            datamodule:JetsDataloaderModule,
         ):
         config = datamodule.config
         histogram = datamodule.histogram_target
@@ -332,6 +332,8 @@ class JetsGraphicalStructure(GraphicalStructureBase):
         self.max_num_particles = config.data.max_num_particles
         self.num_jets = config.data.num_jets
 
+        self.name_to_index = datamodule.name_to_index
+        self.name_to_index = datamodule.name_to_index
         # dimensions
         self.dim_features_continuous = config.data.dim_features_continuous
         self.dim_features_discrete = config.data.dim_features_discrete
@@ -363,13 +365,13 @@ class JetsGraphicalStructure(GraphicalStructureBase):
         """
         return self.with_onehot_shapes
 
-    def remove_problem_dims(self, data, new_dims,name,name_to_index):
+    def remove_problem_dims(self, data, new_dims):
         # pos, atom_type, charge, alpha, homo, lumo, gap, mu, Cv = data
 
         #B = pos.shape[0]
         #assert atom_type.shape == (B, *self.shapes_with_onehot()[1])
         #assert charge.shape == (B, *self.shapes_with_onehot()[2])
-
+        name_to_index = self.name_to_index
         device = data[0].device
         new_dims_dev = new_dims.to(device)
 
@@ -379,126 +381,177 @@ class JetsGraphicalStructure(GraphicalStructureBase):
                 tensor_index = name_to_index["target_continuous"]
                 one_tensor_from_databatch = data[tensor_index]
                 B = one_tensor_from_databatch.size(0)
-                new_tensor = create_and_apply_mask_3(one_tensor_from_databatch,new_dims_dev,device)
+                new_tensor,one_tensor_mask = create_and_apply_mask_3(one_tensor_from_databatch,new_dims_dev,device)
                 databatch_with_dimensions_removed.append(new_tensor)
                 #assert pos.shape == (B, *self.shapes_with_onehot()[0])
             if "target_discrete" == name:
-                tensor_index = name_to_index["target_continuous"]
+                tensor_index = name_to_index["target_discrete"]
                 one_tensor_from_databatch = data[tensor_index]
                 B = one_tensor_from_databatch.size(0)
-                new_tensor = create_and_apply_mask_3(one_tensor_from_databatch,new_dims_dev,device)
+                new_tensor,one_tensor_mask = create_and_apply_mask_3(one_tensor_from_databatch,new_dims_dev,device)
                 databatch_with_dimensions_removed.append(new_tensor)        
             if "target_mask" == name:
-                tensor_index = name_to_index["target_continuous"]
+                tensor_index = name_to_index["target_mask"]
                 one_tensor_from_databatch = data[tensor_index]
                 B = one_tensor_from_databatch.size(0)
-                new_tensor = create_and_apply_mask_3(one_tensor_from_databatch,new_dims_dev,device)
+                new_tensor,one_tensor_mask = create_and_apply_mask_3(one_tensor_from_databatch,new_dims_dev,device)
                 databatch_with_dimensions_removed.append(new_tensor)        
             if "context_continuous" == name:
-                tensor_index = name_to_index["target_continuous"]
+                tensor_index = name_to_index["context_continuous"]
                 one_tensor_from_databatch = data[tensor_index]
                 B = one_tensor_from_databatch.size(0)
-                new_tensor = create_and_apply_mask_3(one_tensor_from_databatch,new_dims_dev,device)
+                new_tensor,one_tensor_mask = create_and_apply_mask_3(one_tensor_from_databatch,new_dims_dev,device)
                 databatch_with_dimensions_removed.append(new_tensor)
             if "context_discrete" == name:
-                tensor_index = name_to_index["target_continuous"]
+                tensor_index = name_to_index["context_discrete"]
                 one_tensor_from_databatch = data[tensor_index]
                 B = one_tensor_from_databatch.size(0)
-                new_tensor = create_and_apply_mask_3(one_tensor_from_databatch,new_dims_dev,device)
+                new_tensor,one_tensor_mask = create_and_apply_mask_3(one_tensor_from_databatch,new_dims_dev,device)
                 databatch_with_dimensions_removed.append(new_tensor)
 
         return databatch_with_dimensions_removed
 
     def adjust_st_batch(self, st_batch):
         device = st_batch.get_device()
-        n_nodes = st_batch.gs.max_problem_dim
+        n_nodes = st_batch.gs.max_num_particles
         B = st_batch.B
         dims = st_batch.get_dims()
 
-        nan_batches = torch.isnan(st_batch.get_flat_lats()).any(dim=1).long().view(B,1)
+        nan_batches = torch.isnan(st_batch.get_flat_lats()).any(dim=1).long().view(B, 1)
         if nan_batches.sum() > 0:
             print('nan batches: ', nan_batches.sum())
         st_batch.set_flat_lats(torch.nan_to_num(st_batch.get_flat_lats()))
 
+        # Adjust target_continuous (analogous to x0_pos in the original code)
+        target_continuous = st_batch.tuple_batch[self.name_to_index["target_continuous"]]
+        assert target_continuous.shape == (B, n_nodes, self.dim_features_continuous)
 
-        x0_pos = st_batch.tuple_batch[0]
-        assert x0_pos.shape == (B, n_nodes, 3)
-
-
-        atom_mask = torch.arange(n_nodes).view(1, -1) < dims.view(-1, 1) # (B, n_nodes)
-        assert atom_mask.shape == (B, n_nodes)
-        atom_mask = atom_mask.long().to(device)
-        node_mask = atom_mask.unsqueeze(2)
+        # Create a mask for valid nodes based on dims
+        node_mask = torch.arange(n_nodes, device=device).view(1, -1) < dims.view(-1, 1)
+        assert node_mask.shape == (B, n_nodes)
+        node_mask = node_mask.long().unsqueeze(2).to(device)
         assert node_mask.shape == (B, n_nodes, 1)
 
-        # if any dims are 0 then set the node mask to all 1's. otherwise you get nans
-        # all these results will be binned later anyway
-        node_mask[dims==0, ...] = torch.ones((B, n_nodes, 1), device=device)[dims==0, ...].long()
+        # Handle cases where dims are zero
+        node_mask[dims == 0, ...] = torch.ones((B, n_nodes, 1), device=device)[dims == 0, ...].long()
 
-        masked_max_abs_value = (x0_pos * (1 - node_mask)).abs().sum().item()
+        # Validate masked values
+        masked_max_abs_value = (target_continuous * (1 - node_mask)).abs().sum().item()
         assert masked_max_abs_value < 1e-5, f'Error {masked_max_abs_value} too high'
+
+        # Normalize target_continuous by subtracting the mean of valid nodes
         N = node_mask.sum(1, keepdims=True)
+        mean = torch.sum(target_continuous, dim=1, keepdim=True) / N
+        assert mean.shape == (B, 1, self.dim_features_continuous)
+        target_continuous = target_continuous - mean * node_mask
+        assert target_continuous.shape == (B, n_nodes, self.dim_features_continuous)
 
-        mean = torch.sum(x0_pos, dim=1, keepdim=True) / N
-        assert mean.shape == (B, 1, 3)
-        x0_pos = x0_pos - mean * node_mask
+        # Prepare flattened data tensors
+        flat_lats = [
+            target_continuous.flatten(start_dim=1),
+            st_batch.tuple_batch[self.name_to_index["target_discrete"]].flatten(start_dim=1)
+        ]
 
-        assert x0_pos.shape == (B, n_nodes, 3)
-        st_batch.set_flat_lats(torch.cat([
-            x0_pos.flatten(start_dim=1),
-            st_batch.tuple_batch[1].flatten(start_dim=1),
-            st_batch.tuple_batch[2].flatten(start_dim=1)
-        ], dim=1))
+        # Optionally include context_continuous and context_discrete
+        if "context_continuous" in self.name_to_index:
+            context_continuous = st_batch.tuple_batch[self.name_to_index["context_continuous"]]
+            flat_lats.append(context_continuous.flatten(start_dim=1))
+
+        if "context_discrete" in self.name_to_index:
+            context_discrete = st_batch.tuple_batch[self.name_to_index["context_discrete"]]
+            flat_lats.append(context_discrete.flatten(start_dim=1))
+
+        # Concatenate all flattened tensors
+        st_batch.set_flat_lats(torch.cat(flat_lats, dim=1))
         return mean
 
     def get_auto_target(self, st_batch, adjust_val):
         B = st_batch.B
         device = st_batch.get_device()
         n_nodes = st_batch.gs.max_problem_dim
-        assert adjust_val.shape == (B, 1, 3) # CoM of delxt
+
+        # Ensure adjust_val shape matches expectations
+        assert adjust_val.shape == (B, 1, st_batch.target_continuous_dim)  # Adjust to match the dimensionality
         delxt_CoM = adjust_val
 
-        xt_pos = st_batch.tuple_batch[0]
-        assert xt_pos.shape == (B, n_nodes, 3)
-        atom_mask = torch.arange(n_nodes).view(1, -1) < st_batch.get_dims().view(-1, 1) # (B, n_nodes)
+        # Extract target_continuous (was previously xt_pos)
+        target_continuous = st_batch.tuple_batch[self.name_to_index["target_continuous"]]  # (B, n_nodes, target_continuous_dim)
+        assert target_continuous.shape == (B, n_nodes, st_batch.target_continuous_dim)
+
+        # Create a mask for valid nodes
+        atom_mask = torch.arange(n_nodes, device=device).view(1, -1) < st_batch.get_dims().view(-1, 1)  # (B, n_nodes)
         assert atom_mask.shape == (B, n_nodes)
-        atom_mask = atom_mask.long().to(device)
-        node_mask = atom_mask.unsqueeze(2)
+        atom_mask = atom_mask.long()
+        node_mask = atom_mask.unsqueeze(2)  # (B, n_nodes, 1)
         assert node_mask.shape == (B, n_nodes, 1)
 
-        xt_pos_from_y = (xt_pos - delxt_CoM) * node_mask
+        # Adjust positions based on delxt_CoM
+        target_continuous_from_y = (target_continuous - delxt_CoM) * node_mask  # (B, n_nodes, target_continuous_dim)
+        assert target_continuous_from_y.shape == (B, n_nodes, st_batch.target_continuous_dim)
 
-        assert xt_pos_from_y.shape == (B, n_nodes, 3)
+        # Concatenate all necessary fields
+        fields_to_concat = [
+            target_continuous_from_y.flatten(start_dim=1),  # Flatten spatial dimensions
+            st_batch.tuple_batch[self.name_to_index["target_discrete"]].flatten(start_dim=1),  # (B, n_nodes * discrete_dim)
+        ]
 
-        auto_target = torch.cat([
-            xt_pos_from_y.flatten(start_dim=1),
-            st_batch.tuple_batch[1].flatten(start_dim=1),
-            st_batch.tuple_batch[2].flatten(start_dim=1)
-        ], dim=1)
-        assert auto_target.shape == (B, n_nodes * (3+5+1))
+        # Optionally include context fields
+        if "context_continuous" in self.name_to_index:
+            context_continuous = st_batch.tuple_batch[self.name_to_index["context_continuous"]].flatten(start_dim=1)
+            fields_to_concat.append(context_continuous)  # Add context_continuous if available
+
+        if "context_discrete" in self.name_to_index:
+            context_discrete = st_batch.tuple_batch[self.name_to_index["context_discrete"]].flatten(start_dim=1)
+            fields_to_concat.append(context_discrete)  # Add context_discrete if available
+
+        # Concatenate all selected fields
+        auto_target = torch.cat(fields_to_concat, dim=1)
+
+        # Ensure the shape matches expectations
+        expected_dim = n_nodes * (
+            st_batch.target_continuous_dim +
+            st_batch.target_discrete_dim +
+            (st_batch.context_continuous_dim if "context_continuous" in self.name_to_index else 0) +
+            (st_batch.context_discrete_dim if "context_discrete" in self.name_to_index else 0)
+        )
+        assert auto_target.shape == (B, expected_dim)
 
         return auto_target
 
     def get_nearest_atom(self, st_batch, delxt_st_batch):
-        # assumes we are doing final dim deletion
+        # Get batch size and device
         B = st_batch.B
         device = st_batch.get_device()
 
-        x_full = st_batch.tuple_batch[0] # (B, n_nodes, 3)
-        full_dims = st_batch.get_dims() # (B,)
-        x_del = delxt_st_batch.tuple_batch[0] # (B, n_nodes, 3)
+        # Retrieve necessary tensors
+        target_continuous_full = st_batch.tuple_batch[self.name_to_index["target_continuous"]]  # (B, n_nodes, dim_features_continuous)
+        full_dims = st_batch.get_dims()  # (B,)
+        target_continuous_del = delxt_st_batch.tuple_batch[self.name_to_index["target_continuous"]]  # (B, n_nodes, dim_features_continuous)
 
-        # if full dim is 3 then x_full is [0, 1, 2] so missing atom is at idx 2
+        # Determine the position of the missing "atom" (last node in the full_dims)
+        missing_atom_pos = target_continuous_full[
+            torch.arange(B, device=device).long(), 
+            (full_dims - 1).long(), 
+            :
+        ]  # (B, dim_features_continuous)
 
-        missing_atom_pos = x_full[torch.arange(B, device=device).long(), (full_dims - 1).long(), :] # (B, 3)
+        # Compute distances to the missing "atom" position
+        distances_to_missing = torch.sum((target_continuous_del - missing_atom_pos.unsqueeze(1)) ** 2, dim=2)  # (B, n_nodes)
 
-        distances_to_missing = torch.sum((x_del - missing_atom_pos.unsqueeze(1)) ** 2, dim=2) # (B, n_nodes)
+        # Create a mask for valid nodes in the deleted batch
+        atom_mask = torch.arange(st_batch.gs.max_num_particles, device=device).view(1, -1) < delxt_st_batch.get_dims().view(-1, 1)  # (B, n_nodes)
+        atom_mask = atom_mask.long()
 
-        atom_mask = torch.arange(st_batch.gs.max_problem_dim).view(1, -1) < delxt_st_batch.get_dims().view(-1, 1) # (B, n_nodes)
-        atom_mask = atom_mask.to(device).long()
+        # Mask invalid nodes by assigning a high distance
+        distances_to_missing = atom_mask * distances_to_missing + (1 - atom_mask) * 1e3
 
-        distances_to_missing = atom_mask * distances_to_missing + (1-atom_mask) * 1e3
+        # Find the nearest atom
+        nearest_atom = torch.argmin(distances_to_missing, dim=1)  # (B,)
 
-        nearest_atom = torch.argmin(distances_to_missing, dim=1) # (B,)
+        # Optionally include context information for debugging or further calculations
+        if "context_continuous" in self.name_to_index:
+            context_continuous = st_batch.tuple_batch[self.name_to_index["context_continuous"]]  # Optional processing if needed
+        if "context_discrete" in self.name_to_index:
+            context_discrete = st_batch.tuple_batch[self.name_to_index["context_discrete"]]  # Optional processing if needed
 
         return nearest_atom

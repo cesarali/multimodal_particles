@@ -6,7 +6,7 @@ from typing import List, Optional, Dict,Union
 class JetsDataConfig:
     # target 
     target_name: str = "AspenOpenJets"
-    target_path: List[str] = field(default_factory=lambda: ["/home/cesarali/Codes/multimodal_particles/data/2016H_job0.h5"])
+    target_path: List[str] = None
     target_preprocess_continuous: str = "standardize"
     target_preprocess_discrete: str = "tokens"
     target_info: Dict[str, Union[list, dict]] = field(default_factory=lambda: {
@@ -26,7 +26,7 @@ class JetsDataConfig:
     # dimensions
     min_num_particles: int=0
     max_num_particles: int=128
-    num_jets: int=1000
+    num_jets: int=100
     dim_features_continuous: int = 3
     dim_features_discrete: int = 1
     dim_context_continuous: int = 0
@@ -42,7 +42,7 @@ class JetsDataConfig:
     exist: List[int] = None 
     observed: List[int] = None
 
-    batch_size: int = 1024
+    batch_size: int = 4
     data_split_frac: List[float] = field(default_factory=lambda: [0.8, 0.2, 0.0])
     
 @dataclass
