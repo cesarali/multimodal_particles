@@ -14,8 +14,43 @@ import torch.nn.functional as F
 from multimodal_particles.models.generative.transdimensional.structure import StructuredArgument, StructuredDataBatch
 from multimodal_particles.models.generative.diffusion.noising import VP_SDE, ConstForwardRate, StepForwardRate
 
+def add_noise(st_batch,noise_schedule,forward_rate,min_t):
+    B = st_batch.B
+    device = st_batch.get_device()
+    x0_dims = st_batch.get_dims()
+
+    ts = min_t + (1-min_t) * torch.rand((B,)) # (B,)
+
+    # delete some dimensions
+    dims_xt = forward_rate.get_dims_at_t(
+        start_dims=st_batch.get_dims(),
+        ts =ts
+    ).int() # (B,)
+    st_batch.delete_dims(new_dims=dims_xt)
+
+    st_batch.gs.adjust_st_batch(st_batch)
+
+    x, y = st_batch.get_flat_lats_and_obs()
+
+    mean, std = noise_schedule.get_p0t_stats(st_batch, ts.to(device))
+    noise = torch.randn_like(mean)
+    noise_st_batch = StructuredDataBatch.create_copy(st_batch)
+    noise_st_batch.set_flat_lats(noise)
+    noise_st_batch.delete_dims(new_dims=dims_xt)
+    noise_st_batch.gs.adjust_st_batch(noise_st_batch)
+    noise = noise_st_batch.get_flat_lats()
+    xt = mean + std * noise
+
+    st_batch.set_flat_lats(xt)
+
+    # make sure all masks are still correct
+    st_batch.delete_dims(new_dims=dims_xt)
+    # adjust
+    st_batch.gs.adjust_st_batch(st_batch)
+    return st_batch,ts,x0_dims,B,noise,device,x
 
 class JumpLossFinalDim:
+    
     def __init__(self,
                  forward_rate,
                  noise_schedule,
@@ -55,41 +90,7 @@ class JumpLossFinalDim:
             net.model.noise_schedule = self.noise_schedule
 
         # inputs network and structured data batch
-
-        B = st_batch.B
-        device = st_batch.get_device()
-        x0_dims = st_batch.get_dims()
-
-        ts = self.min_t + (1-self.min_t) * torch.rand((B,)) # (B,)
-
-        # delete some dimensions
-        dims_xt = self.forward_rate.get_dims_at_t(
-            start_dims=st_batch.get_dims(),
-            ts =ts
-        ).int() # (B,)
-        st_batch.delete_dims(new_dims=dims_xt)
-
-        st_batch.gs.adjust_st_batch(st_batch)
-
-
-        x, y = st_batch.get_flat_lats_and_obs()
-
-        mean, std = self.noise_schedule.get_p0t_stats(st_batch, ts.to(device))
-        noise = torch.randn_like(mean)
-        noise_st_batch = StructuredDataBatch.create_copy(st_batch)
-        noise_st_batch.set_flat_lats(noise)
-        noise_st_batch.delete_dims(new_dims=dims_xt)
-        noise_st_batch.gs.adjust_st_batch(noise_st_batch)
-        noise = noise_st_batch.get_flat_lats()
-        xt = mean + std * noise
-
-        st_batch.set_flat_lats(xt)
-
-        # make sure all masks are still correct
-        st_batch.delete_dims(new_dims=dims_xt)
-        # adjust
-        st_batch.gs.adjust_st_batch(st_batch)
-
+        st_batch,ts,x0_dims,B,noise,device,x = add_noise(st_batch,self.noise_schedule,self.forward_rate,self.min_t)
 
         # first network pass
         to_predict = {'eps': 'eps', 'x0': 'x0', 'edm': 'x0'}[self.loss_type]
@@ -107,7 +108,6 @@ class JumpLossFinalDim:
         # so need to subtract 1 for ce loss
         ce_loss = F.cross_entropy(x0_dim_logits, x0_dims.to(device)-1, reduction='none')
         assert ce_loss.shape == (B,)
-
 
         D_xt_mask = st_batch.get_mask(B, include_obs=False, include_onehot_channels=True).to(st_batch.get_device())
         D_xt = D_xt * D_xt_mask   # zero out for dimensions that don't exist

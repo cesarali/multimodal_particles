@@ -15,6 +15,7 @@ class MultiModalEPiC(nn.Module):
         self.dim_features_continuous = config.data.dim_features_continuous
         self.dim_features_discrete = config.data.dim_features_discrete
         self.vocab_size = config.data.vocab_size_features
+        self.output_dim = self.dim_features_continuous + self.dim_features_discrete * self.vocab_size
 
         self.epic = EPiC(config)
         self.add_discrete_head = config.encoder.add_discrete_head
@@ -34,7 +35,7 @@ class MultiModalEPiC(nn.Module):
     def forward(
         self, t, x, k, mask=None, context_continuous=None, context_discrete=None
     ):
-        h = self.epic(t, x, k, mask, context_continuous, context_discrete)
+        h = self.epic(t, x, k, mask, context_continuous, context_discrete) #(B,max_num_particles,output_dim)
         continuous_head = h[..., : self.dim_features_continuous]
         discrete_head = h[..., self.dim_features_continuous :]
         absorbing_head = mask  # TODO
@@ -84,8 +85,7 @@ class EPiC(nn.Module):
             dim_input=dim_time_emb
             + dim_features_continuous_emb
             + dim_features_discrete_emb,
-            dim_output=self.dim_features_continuous
-            + self.dim_features_discrete * self.vocab_size,
+            dim_output=self.dim_features_continuous + self.dim_features_discrete * self.vocab_size,
             dim_context=dim_time_emb
             + dim_context_continuous_emb
             + dim_context_discrete_emb,
@@ -95,8 +95,17 @@ class EPiC(nn.Module):
             use_skip_connection=config.encoder.skip_connection,
         )
 
+        # B,max_num_particules,dim_output
+
     def forward(
-        self, t, x, k=None, mask=None, context_continuous=None, context_discrete=None
+        self, 
+        t, 
+        x, 
+        k=None, 
+        mask=None, 
+        context_continuous=None, 
+        context_discrete=None,
+        output_global=False,
     ):
         context_continuous = (
             context_continuous.to(t.device)
@@ -112,9 +121,12 @@ class EPiC(nn.Module):
         x_local_emb, context_emb = self.embedding(
             t, x, k, mask, context_continuous, context_discrete
         )
-        h = self.epic(x_local_emb, context_emb, mask)
-        return h
-
+        if output_global:
+            h,h_global = self.epic(x_local_emb, context_emb, mask,output_global)
+            return h,h_global
+        else:
+            h = self.epic(x_local_emb, context_emb, mask)
+            return h
 
 class EPiCNetwork(nn.Module):
     def __init__(
@@ -168,7 +180,7 @@ class EPiCNetwork(nn.Module):
         x_pool = torch.cat([x_mean, x_sum, *x_global], 1)
         return x_pool
 
-    def forward(self, x_local, context=None, mask=None):
+    def forward(self, x_local, context=None, mask=None, output_global=False):
         # ...Projection network:
         x_local, x_global = self.epic_proj(x_local, context, mask)
         x_local_skip = x_local.clone() if self.use_skip_connection else 0
@@ -182,9 +194,10 @@ class EPiCNetwork(nn.Module):
 
         # ...output layer:
         h = self.output_layer(x_local)
-
-        return h * mask  # [batch, points, feats]
-
+        if output_global:
+            return h * mask, x_global # [batch, points, feats], # [batch, points, dim_hidden_global] 
+        else:
+            return h * mask  # [batch, points, feats]
 
 class EPiC_Projection(nn.Module):
     def __init__(

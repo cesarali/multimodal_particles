@@ -72,7 +72,9 @@ def test_graphical_structure():
     graphical_structure.adjust_st_batch(st_batch)
     mean, std = model.noise_schedule.get_p0t_stats(st_batch, ts.to(device))
 
-def test_loss():
+def test_model():
+    from multimodal_particles.models.generative.transdimensional.loss import add_noise
+
     #obtain configs
     config = TransdimensionalEpicConfig()
     config.data.return_type = "list"
@@ -83,16 +85,28 @@ def test_loss():
     datamodule = JetsDataloaderModule(config=config, jetdataset=jets)
     dims, *data = next(datamodule.train.__iter__())
 
+    # create module
+    model = TransdimensionalJumpDiffusion(config,datamodule)
     st_batch = StructuredDataBatch(data,
                                    dims,
                                    datamodule.observed,
                                    datamodule.exist,
                                    datamodule.is_onehot,
                                    datamodule.graphical_structure)
-    # create module
-    model = TransdimensionalJumpDiffusion(config,datamodule)
-    loss = model.jump_diffusion_loss(model.net,st_batch)
 
+    # inputs network and structured data batch
+    st_batch,ts,x0_dims,B,noise,device,x = add_noise(st_batch,model.noise_schedule,model.forward_rate,model.jump_diffusion_loss.min_t)
+
+    # first network pass
+    to_predict = {'eps': 'eps', 'x0': 'x0', 'edm': 'x0'}[model.jump_diffusion_loss.loss_type]
+    if model.jump_diffusion_loss.nearest_atom_pred:
+        D_xt, rate_xt, dummy_mean_std, x0_dim_logits, _ = model.net(
+            st_batch, ts=ts.to(device), forward_rate=model.forward_rate,
+            predict=to_predict, nearest_atom=torch.zeros((B,), device=device).long()
+        )
+    else:
+        D_xt, rate_xt, dummy_mean_std, x0_dim_logits = model.net(st_batch, ts=ts.to(device), forward_rate=model.forward_rate, predict=to_predict)
+    assert rate_xt.shape == (B, 1)
 
 if __name__=="__main__":
-    test_loss()
+    test_model()

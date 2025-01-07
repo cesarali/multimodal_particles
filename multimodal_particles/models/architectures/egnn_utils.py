@@ -848,7 +848,6 @@ class PredefinedNoiseSchedule():
         t_int = torch.round(t * self.timesteps).long()
         return self.gamma[t_int]
 
-
 # Defining some useful util functions.
 def expm1(x: torch.Tensor) -> torch.Tensor:
     return torch.expm1(x)

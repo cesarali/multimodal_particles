@@ -125,7 +125,8 @@ class GradConditionerKwargs:
 
 @dataclass
 class EncoderConfig:
-    name: str = "MultiModalEPiC"
+    # Epic Architecture
+    name: str = "TransdimensionalEPiC"
     num_blocks: int = 2
     embedding_time: str = "SinusoidalPositionalEncoding"
     embedding_features_continuous: str = "Linear"
@@ -133,7 +134,7 @@ class EncoderConfig:
     embedding_context_continuous: Optional[str] = None
     embedding_context_discrete: Optional[str] = None
     dim_hidden_local: int = 16
-    dim_hidden_glob: int = 16
+    dim_hidden_glob: int = 19
     dim_emb_time: int = 16
     dim_emb_features_continuous: int = 16
     dim_emb_features_discrete: int = 16
@@ -143,6 +144,12 @@ class EncoderConfig:
     dropout: float = 0.1
     activation: str = "SELU"
     add_discrete_head: bool = True
+
+    # Transdimensional Heads for Rate and Particle Creations
+    rate_use_x0_pred: bool = True
+    transformer_dim: int = 128
+    n_heads: int = 8
+    n_attn_blocks: int = 8
 
 @dataclass
 class NetworkKwargs:

@@ -44,6 +44,8 @@ def test_model():
     random_databatch = JetsDataloaderModule.random_databatch(model_config)
     model = MultiModalBridgeMatching(model_config)
     state = model.sample_bridges(random_databatch)
+    head_output = model(state,random_databatch)
+
     print(state.time.shape, state.continuous.shape, state.discrete.shape, state.absorbing.shape)
 
 

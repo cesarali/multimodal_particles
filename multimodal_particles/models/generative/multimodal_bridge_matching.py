@@ -96,9 +96,9 @@ class MultiModalBridgeMatching(L.LightningModule):
 
     def forward(self, state: HybridState, batch) -> MultiHeadOutput:
         continuous, discrete, absorbing = self.encoder(
-            t=state.time,
-            x=state.continuous,
-            k=state.discrete,
+            t=state.time, # [B,1,1]
+            x=state.continuous, # [B,max_number_particles,dim_features_continuous]
+            k=state.discrete, # [B,max_number_particles,1]
             mask=state.absorbing,
             context_continuous=getattr(batch, "context_continuous", None),
             context_discrete=getattr(batch, "context_discrete", None),
@@ -215,7 +215,6 @@ class MultiModalBridgeMatching(L.LightningModule):
         )
         final_state = self.simulate_dynamics(initial_state, batch)
         return final_state
-
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(

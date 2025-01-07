@@ -331,9 +331,8 @@ class JetsGraphicalStructure(GraphicalStructureBase):
         self.names_in_batch = datamodule.names_in_batch
         self.max_num_particles = config.data.max_num_particles
         self.num_jets = config.data.num_jets
-
         self.name_to_index = datamodule.name_to_index
-        self.name_to_index = datamodule.name_to_index
+        
         # dimensions
         self.dim_features_continuous = config.data.dim_features_continuous
         self.dim_features_discrete = config.data.dim_features_discrete
