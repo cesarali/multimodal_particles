@@ -143,12 +143,15 @@ class StructuredDataBatch():
             if e:
                 if oh:
                     if include_onehot_channels:
-                        data.append(torch.ones((B, *shape), device=device))
+                        new_shape = (B, *shape)
+                        data.append(torch.ones(new_shape, device=device))
                     else:
-                        data.append(torch.ones((B, *shape[1:]), device=device))
+                        new_shape = (B, *shape[1:])
+                        data.append(torch.ones(new_shape, device=device))
                 else:
-                    data.append(torch.ones((B, *shape), device=device))
-
+                    new_shape = (B, *shape)
+                    data.append(torch.ones(new_shape, device=device))
+                print(new_shape)
         data = self.gs.remove_problem_dims(data, self._dims)
 
         if include_obs:

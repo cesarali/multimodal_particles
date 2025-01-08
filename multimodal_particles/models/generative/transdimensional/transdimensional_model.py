@@ -11,7 +11,7 @@ from multimodal_particles.data.particle_clouds.jets_dataloader import (
 from multimodal_particles.models.architectures.epic import EPiC
 from multimodal_particles.models.generative.transdimensional.structure import Structure
 from multimodal_particles.config_classes.transdimensional_config_unconditional import TransdimensionalEpicConfig
-from multimodal_particles.models.generative.diffusion.noising import VP_SDE, ConstForwardRate, StepForwardRate
+from multimodal_particles.models.generative.diffusion.noising import VP_SDE, ConstForwardRate, StepForwardRate,StateIndependentForwardRate
 from multimodal_particles.models.generative.diffusion.noising import get_rate_using_x0_pred
 from multimodal_particles.models.architectures.gsdm import AttnBlock, ResnetBlock, get_timestep_embedding
 from multimodal_particles.models.generative.transdimensional.loss import JumpLossFinalDim 
@@ -117,7 +117,7 @@ class EpsilonPrecond(torch.nn.Module):
 
     def forward(self, st_batch, ts, predict='eps', forward_rate=None,nearest_atom=None):
         xt = st_batch.get_flat_lats()  # TODO mode to relevant if statement below
-        eps, *others = self.model(st_batch,ts,forward_rate,nearest_atom)
+        eps, *others = self.model(st_batch,ts,nearest_atom=nearest_atom,forward_rate=forward_rate)
         if predict == 'eps':
             return eps, *others
         elif predict == 'x0':
@@ -146,7 +146,7 @@ class TransdimensionalEPiC(nn.Module):
         self.name_to_index = structure.graphical_structure.name_to_index
 
         self.output_dim = self.dim_features_continuous + self.dim_features_discrete * self.vocab_size_features
-        self.output_dim_global = config.encoder.dim_hidden_glob
+        self.output_dim_local = config.encoder.dim_hidden_local
 
         self.epic = EPiC(config)
         
@@ -165,13 +165,16 @@ class TransdimensionalEPiC(nn.Module):
             )
 
         self.noise_schedule = None
+        self.set_up()
 
     def set_up(self):
-        output_dim_global = self.output_dim_global
+        output_dim_global = self.output_dim_local
         transformer_dim = self.config.encoder.transformer_dim
         n_heads = self.config.encoder.n_heads
         n_attn_blocks = self.config.encoder.n_attn_blocks
         self.rate_use_x0_pred = self.config.encoder.rate_use_x0_pred
+        self.detach_last_layer = self.config.encoder.detach_last_layer
+        self.augment_dim = self.config.encoder.augment_dim
 
         if self.rate_use_x0_pred:
             self.rdim = self.structure.graphical_structure.max_num_particles
@@ -184,8 +187,12 @@ class TransdimensionalEPiC(nn.Module):
         self.temb_net = nn.Linear(self.temb_dim, self.temb_dim)
 
         self.transformer_1_proj_in = nn.Linear(
-            output_dim_global + 6, self.transformer_dim
+            output_dim_global + self.vocab_size_features, self.transformer_dim
         )
+
+        #self.transformer_1_proj_in = nn.Linear(
+        #    self.egnn_net.egnn.hidden_nf + 6, self.transformer_dim
+        #)
 
         # these are for the head that does the rate and nearest atom prediction
         self.attn_blocks = nn.ModuleList([
@@ -206,8 +213,13 @@ class TransdimensionalEPiC(nn.Module):
 
         # this is for the head that gives the vector given the nearest atom and std
         self.vec_transformer_in_proj = nn.Linear(
-            output_dim_global + 6 + 1 + 2, self.transformer_dim
+            output_dim_global + self.vocab_size_features + 1 + 2, self.transformer_dim
         )
+
+        #self.vec_transformer_in_proj = nn.Linear(
+        #    self.egnn_net.egnn.hidden_nf + 6 + 1 + 2, self.transformer_dim
+        #)
+
         self.vec_attn_blocks = nn.ModuleList([
             AttnBlock(self.transformer_dim, n_heads, attn_dim_reduce=1)
             for _ in range(n_attn_blocks)
@@ -221,7 +233,8 @@ class TransdimensionalEPiC(nn.Module):
         self.vec_weighting_proj = nn.Linear(self.transformer_dim, 1)
 
         self.pre_auto_proj = nn.Linear(self.transformer_dim, self.transformer_dim)
-        self.post_auto_proj = nn.Linear(self.transformer_dim, 2*5 + 2 + 1)
+        #self.post_auto_proj = nn.Linear(self.transformer_dim, 2*5 + 2 + 1)
+        self.post_auto_proj = nn.Linear(self.transformer_dim, 2*self.vocab_size_features + 1)
     
     def forward(
         self, st_batch, ts, nearest_atom, sample_nearest_atom=False, augment_labels=None, forward_rate=None, rnd=None
@@ -230,18 +243,180 @@ class TransdimensionalEPiC(nn.Module):
         #t, x, k, mask=None, context_continuous=None, context_discrete=None,
         """
         #st_batch, ts, nearest_atom, sample_nearest_atom=False, augment_labels=None, forward_rate=None, rnd=None
-        target_discrete,target_continuous,context_continuous,context_discrete,mask = self.from_st_batch_to_multimodal_bridge_databatch(st_batch)
-        ts = ts.unsqueeze(-1).unsqueeze(-1)
-        h,h_global = self.epic(ts, target_continuous, target_discrete, mask, context_continuous, context_discrete,output_global=True)
+        B = st_batch.B
+        x = st_batch.tuple_batch[0]
+        dims = st_batch.get_dims()
+        device = st_batch.get_device()
+        B, n_nodes, _ = x.shape
 
-        return h_global
-    
+        target_discrete_one_hot,target_discrete,target_continuous,context_continuous,context_discrete,mask = self.from_st_batch_to_multimodal_bridge_databatch(st_batch)
+        ts = ts.unsqueeze(-1).unsqueeze(-1)
+        net_out, net_last_layer = self.epic(ts, target_continuous, target_discrete, mask, context_continuous, context_discrete,output_hidden_local=True)
+
+        node_mask = mask
+        #node_mask = atom_mask.unsqueeze(2)
+
+        assert net_out.shape == (B, n_nodes, self.output_dim)
+        x_out = net_out[:, :, 0:self.dim_features_continuous]
+        atom_type_one_hot_out = net_out[:, :, self.dim_features_continuous:]
+
+        D_xt = torch.cat([
+            x_out.flatten(start_dim=1),
+            atom_type_one_hot_out.flatten(start_dim=1),
+        ], dim=1)
+        assert D_xt.shape == (B, n_nodes * (self.output_dim))
+
+        assert net_last_layer.shape == (B, n_nodes, self.output_dim_local)
+        
+        if self.detach_last_layer:
+            net_last_layer = net_last_layer.detach()
+
+        ts = ts.squeeze()
+        temb = get_timestep_embedding(ts*1000, self.temb_dim)
+        temb = self.temb_net(temb) # (B, C)
+        temb = temb.view(B, self.temb_dim, 1).repeat(1, 1, n_nodes) # (B, C, N)
+
+        #==========================================================================
+        # DATA APPEARS 
+        h = torch.cat([
+            net_last_layer,
+            target_discrete_one_hot,
+        ], dim=2)
+        # ==========================================================================
+        # self.egnn_net.egnn.hidden_nf -> self.output_dim_local
+
+        assert h.shape == (B, n_nodes, self.output_dim_local + self.vocab_size_features)
+        h = self.transformer_1_proj_in(h)
+        assert h.shape == (B, n_nodes, self.transformer_dim)
+        h = h.transpose(1,2)
+        assert h.shape == (B, self.transformer_dim, n_nodes)
+
+        for (res_block, attn_block) in zip(self.res_blocks, self.attn_blocks):
+            h = res_block(h, temb)
+            h = attn_block(h)
+
+        h = h.transpose(1, 2)
+        assert h.shape == (B, n_nodes, self.transformer_dim)
+
+        rate_emb = self.pre_rate_proj(h) # (B, N, C)
+        rate_emb = torch.mean(rate_emb, dim=1) # (B, C)
+        rate_emb = self.post_rate_proj(rate_emb) # (B, rdim)
+
+        if self.rate_use_x0_pred:
+            x0_dim_logits = rate_emb
+            rate_out = get_rate_using_x0_pred(
+                x0_dim_logits=x0_dim_logits, xt_dims=st_batch.get_dims(),
+                forward_rate=forward_rate, ts=ts, max_dim=st_batch.gs.max_num_particles
+            ).view(-1, 1) # (B, 1)
+        else:
+            x0_dim_logits = torch.zeros((B, st_batch.gs.max_num_particles), device=device)
+            f_rate_ts = forward_rate.get_rate(None, ts).view(B, 1)
+
+            # rate_out = rate_emb.exp() # (B, 1)
+            rate_out = F.softplus(rate_emb) * f_rate_ts # (B, 1)
+
+        near_atom_logits = self.near_atom_proj(h)[:, :, 0]
+        assert near_atom_logits.shape == (B, n_nodes)
+
+        if sample_nearest_atom:
+            if rnd is None:
+                nearest_atom = torch.multinomial(torch.softmax(near_atom_logits, dim=1), 1).view(-1)
+            else:
+                nearest_atom = rnd.multinomial(torch.softmax(near_atom_logits, dim=1), num_samples=1).view(-1)
+
+        assert nearest_atom.shape == (B,) # index from 0 to n_nodes-1
+
+        # create a distance matrix for the closest atom (B, n_nodes)
+        distances = torch.sum( (x[torch.arange(B, device=device), nearest_atom, :].view(B, 1, 3) - x)**2, dim=-1, keepdim=True).sqrt()
+        assert distances.shape == (B, n_nodes, 1)
+
+        nearest_atom_one_hot = torch.tensor([0.0, 1.0], device=device).view(1, 1, 2).repeat(B, n_nodes, 1)
+        nearest_atom_one_hot[torch.arange(B, device=device), nearest_atom, 0] = 1.0
+        nearest_atom_one_hot[torch.arange(B, device=device), nearest_atom, 1] = 0.0
+        assert nearest_atom_one_hot.shape == (B, n_nodes, 2)
+
+        #==========================================================================
+        # DATA APPEARS 
+        target_discrete_one_hot
+        vec_transformer_in = torch.cat([
+            net_last_layer,
+            target_discrete_one_hot, #atom_type_one_hot,
+            distances,
+            nearest_atom_one_hot
+        ], dim=2)
+        # ==========================================================================
+
+        #assert vec_transformer_in.shape == (B, n_nodes, self.egnn_net.egnn.hidden_nf + 6 + 1 + 2) 6 here is number of atoms type plus charge
+        assert vec_transformer_in.shape == (B, n_nodes, self.output_dim_local + self.vocab_size_features + 1 + 2)
+        vec_transformer_in = vec_transformer_in * node_mask
+        vec_transformer_in = self.vec_transformer_in_proj(vec_transformer_in)
+        assert vec_transformer_in.shape == (B, n_nodes, self.transformer_dim)
+        vec_transformer_in = vec_transformer_in.transpose(1,2)
+        assert vec_transformer_in.shape == (B, self.transformer_dim, n_nodes)
+        h_vec = vec_transformer_in
+
+        for (res_block, attn_block) in zip(self.vec_res_blocks, self.vec_attn_blocks):
+            h_vec = res_block(h_vec, temb)
+            h_vec = attn_block(h_vec)
+
+        assert h_vec.shape == (B, self.transformer_dim, n_nodes)
+        h_vec = h_vec.transpose(1, 2)
+        assert h_vec.shape == (B, n_nodes, self.transformer_dim)
+
+        vec_weights = self.vec_weighting_proj(h_vec) # (B, N, 1)
+        assert vec_weights.shape == (B, n_nodes, 1)
+        vectors = x[torch.arange(B, device=device), nearest_atom, :].view(B, 1, 3) - x
+        assert vectors.shape == (B, n_nodes, 3)
+        vectors = vectors * node_mask
+        assert vectors.shape == (B, n_nodes, 3)
+        # normalize the vectors
+        vectors = vectors / (torch.sqrt(torch.sum(vectors**2, dim=-1, keepdim=True)) + 1e-3)
+
+        auto_pos_mean_out = x[torch.arange(B, device=device), nearest_atom, :] + \
+            torch.sum(vec_weights * vectors, dim=1) # (B, 3)
+
+        pre_auto_h = self.pre_auto_proj(h_vec)
+        assert pre_auto_h.shape == (B, n_nodes, self.transformer_dim)
+        pre_auto_h = torch.mean(pre_auto_h, dim=1) # (B, C)
+        post_auto_h = self.post_auto_proj(pre_auto_h) # (B, 2*self.vocab_size_features + 2 + 1)
+
+        VSF = self.vocab_size_features
+        pos_std = post_auto_h[:, 0:1].repeat(1, 3) # (B, 3)
+        atom_type_mean = post_auto_h[:, 1:1+self.vocab_size_features] #atom_type_mean = post_auto_h[:, 1:1+5] # (B, 5)
+        atom_type_std = post_auto_h[:, 1+VSF:1+VSF+VSF] #atom_type_std = post_auto_h[:, 1+5:1+5+5] # (B, 5)
+        #charge_mean = post_auto_h[:, 1+VSF+VSF:1+VSF+VSF+1] # (B, 1)
+        #charge_std = post_auto_h[:, 1+VSF+VSF+1:1+VSF+VSF+1+1] # (B, 1)
+
+        auto_mean_out = torch.cat(
+            [auto_pos_mean_out, atom_type_mean],
+        dim=1).view(B, 1, 3+VSF).repeat(1, n_nodes, 1) # (B, n_nodes, 3+5)
+        auto_std_out = torch.cat(
+            [pos_std, atom_type_std],
+        dim=1).view(B, 1, 3+VSF).repeat(1, n_nodes, 1) # (B, n_nodes, 3+5)
+
+        auto_mean_out = torch.cat([
+            auto_mean_out[:, :, 0:3].flatten(start_dim=1),
+            auto_mean_out[:, :, 3:3+VSF].flatten(start_dim=1),
+        ], dim=1) # (B, n_nodes * (3+5))
+
+        auto_std_out = torch.cat([
+            auto_std_out[:, :, 0:3].flatten(start_dim=1),
+            auto_std_out[:, :, 3:3+VSF].flatten(start_dim=1),
+        ], dim=1) # (B, n_nodes * (3+5))
+
+        auto_mask = st_batch.get_next_dim_added_mask(B, include_onehot_channels=True, include_obs=False) #(B, n_nodes * (3+5+1))
+
+        auto_mean_out = auto_mask * auto_mean_out
+        auto_std_out = auto_mask * auto_std_out
+        
+        return D_xt, rate_out, (auto_mean_out, auto_std_out), x0_dim_logits, near_atom_logits
+        
     def from_st_batch_to_multimodal_bridge_databatch(self,st_batch):
         self.vocab_size_features
         device = st_batch.get_device()
 
-        target_discrete = st_batch.tuple_batch[self.name_to_index["target_discrete"]] # (B, max_num_particles,vocab_size_features) (one hot)
-        max_target = torch.max(F.softmax(target_discrete),dim=-1)
+        target_discrete_one_hot = st_batch.tuple_batch[self.name_to_index["target_discrete"]] # (B, max_num_particles,vocab_size_features) (one hot)
+        max_target = torch.max(F.softmax(target_discrete_one_hot),dim=-1)
         target_discrete = max_target.indices.unsqueeze(-1) # (B, max_num_particles,1)
 
         target_continuous = st_batch.tuple_batch[self.name_to_index["target_continuous"]]
@@ -260,7 +435,7 @@ class TransdimensionalEPiC(nn.Module):
         else:
             context_discrete = None
         
-        return target_discrete,target_continuous,context_continuous,context_discrete,mask
+        return target_discrete_one_hot,target_discrete,target_continuous,context_continuous,context_discrete,mask
     
 class EGNNMultiHeadJump(nn.Module):
     """

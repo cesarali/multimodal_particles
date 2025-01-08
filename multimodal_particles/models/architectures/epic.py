@@ -105,7 +105,7 @@ class EPiC(nn.Module):
         mask=None, 
         context_continuous=None, 
         context_discrete=None,
-        output_global=False,
+        output_hidden_local=False,
     ):
         context_continuous = (
             context_continuous.to(t.device)
@@ -121,8 +121,8 @@ class EPiC(nn.Module):
         x_local_emb, context_emb = self.embedding(
             t, x, k, mask, context_continuous, context_discrete
         )
-        if output_global:
-            h,h_global = self.epic(x_local_emb, context_emb, mask,output_global)
+        if output_hidden_local:
+            h,h_global = self.epic(x_local_emb, context_emb, mask,output_hidden_local)
             return h,h_global
         else:
             h = self.epic(x_local_emb, context_emb, mask)
@@ -180,7 +180,7 @@ class EPiCNetwork(nn.Module):
         x_pool = torch.cat([x_mean, x_sum, *x_global], 1)
         return x_pool
 
-    def forward(self, x_local, context=None, mask=None, output_global=False):
+    def forward(self, x_local, context=None, mask=None, output_hidden_local=False):
         # ...Projection network:
         x_local, x_global = self.epic_proj(x_local, context, mask)
         x_local_skip = x_local.clone() if self.use_skip_connection else 0
@@ -194,10 +194,10 @@ class EPiCNetwork(nn.Module):
 
         # ...output layer:
         h = self.output_layer(x_local)
-        if output_global:
-            return h * mask, x_global # [batch, points, feats], # [batch, points, dim_hidden_global] 
+        if output_hidden_local:
+            return h * mask, x_local # [batch, points, dim_input], # [batch, points, dim_hidden_global] 
         else:
-            return h * mask  # [batch, points, feats]
+            return h * mask  # [batch, points, dim_input]
 
 class EPiC_Projection(nn.Module):
     def __init__(

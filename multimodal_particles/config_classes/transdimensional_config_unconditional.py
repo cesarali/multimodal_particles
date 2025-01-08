@@ -148,8 +148,10 @@ class EncoderConfig:
     # Transdimensional Heads for Rate and Particle Creations
     rate_use_x0_pred: bool = True
     transformer_dim: int = 128
-    n_heads: int = 8
-    n_attn_blocks: int = 8
+    n_heads: int = 2
+    n_attn_blocks: int = 2
+    detach_last_layer: bool = True
+    augment_dim: int = 9
 
 @dataclass
 class NetworkKwargs:

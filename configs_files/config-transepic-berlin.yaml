@@ -50,12 +50,14 @@ ema_halflife_kimg: 500
 encoder:
   activation: SELU
   add_discrete_head: true
+  augment_dim: 9
+  detach_last_layer: true
   dim_emb_context_continuous: 0
   dim_emb_context_discrete: 0
   dim_emb_features_continuous: 16
   dim_emb_features_discrete: 16
   dim_emb_time: 16
-  dim_hidden_glob: 16
+  dim_hidden_glob: 19
   dim_hidden_local: 16
   dropout: 0.1
   embedding_context_continuous: null
@@ -63,9 +65,13 @@ encoder:
   embedding_features_continuous: Linear
   embedding_features_discrete: Embedding
   embedding_time: SinusoidalPositionalEncoding
-  name: MultiModalEPiC
+  n_attn_blocks: 2
+  n_heads: 2
+  name: TransdimensionalEPiC
   num_blocks: 2
+  rate_use_x0_pred: true
   skip_connection: true
+  transformer_dim: 128
 grad_conditioner_kwargs:
   class_name: training.grad_conditioning.MoleculeJump
   grad_norm_clip: 1.0
