@@ -1,13 +1,12 @@
 import os
 import pytest
 from pprint import pprint
-from multimodal_particles.data.particle_clouds.jets_dataloader import JetsDataloaderModule
 from multimodal_particles.data.particle_clouds.jets import JetDataclass
+from multimodal_particles.data.particle_clouds.jets_dataloader import JetsDataloaderModule
 from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
 from multimodal_particles.models.generative.multimodal_bridge_matching import MultiModalBridgeMatching
 from multimodal_particles.utils.experiment_configs import namespace_to_dict,dict_to_yaml
 from multimodal_particles import test_resources_dir
-
 
 def test_configs():
     config_file_path = os.path.join(test_resources_dir, "configs_files", "config-mbm-test.yaml")
@@ -34,7 +33,6 @@ def test_random_databatch():
             f"Shape mismatch in field '{field}': "
             f"{random_tensor_shape} (random) vs {data_tensor_shape} (data)"
         )
-
     print("All fields have matching shapes.")
 
 
@@ -47,7 +45,6 @@ def test_model():
     head_output = model(state,random_databatch)
 
     print(state.time.shape, state.continuous.shape, state.discrete.shape, state.absorbing.shape)
-
 
 if __name__=="__main__":
     test_model()

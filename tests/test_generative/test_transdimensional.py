@@ -5,7 +5,7 @@ from pprint import pprint
 from multimodal_particles import config_dir
 
 from multimodal_particles.models.generative.transdimensional import TransdimensionalJumpDiffusion
-from multimodal_particles.config_classes.transdimensional_config_unconditional import TransdimensionalEpicConfig
+from multimodal_particles.config_classes.transdimensional_unconditional_config import TransdimensionalEpicConfig
 from multimodal_particles.data.particle_clouds.jets_dataloader import JetsGraphicalStructure
 from multimodal_particles.models.generative.transdimensional.structure import (
     Structure,
@@ -95,7 +95,7 @@ def test_model():
                                    datamodule.graphical_structure)
 
     # inputs network and structured data batch
-    st_batch,ts,x0_dims,B,noise,device,x = add_noise(st_batch,model.noise_schedule,model.forward_rate,model.jump_diffusion_loss.min_t)
+    st_batch,ts,x0_dims,dims_xt,B,noise,device,x = add_noise(st_batch,model.noise_schedule,model.forward_rate,model.jump_diffusion_loss.min_t)
 
     # first network pass
     to_predict = {'eps': 'eps', 'x0': 'x0', 'edm': 'x0'}[model.jump_diffusion_loss.loss_type]
@@ -106,7 +106,33 @@ def test_model():
         )
     else:
         D_xt, rate_xt, dummy_mean_std, x0_dim_logits = model.net(st_batch, ts=ts.to(device), forward_rate=model.forward_rate, predict=to_predict)
+
     assert rate_xt.shape == (B, 1)
 
+@pytest.mark.skip(reason="NOT FINISHED PROBLEM WITH INTERPOLATION TO ONE PARTICLE")
+def test_loss():
+    from multimodal_particles.models.generative.transdimensional.loss import add_noise
+
+    #obtain configs
+    config = TransdimensionalEpicConfig()
+    config.data.return_type = "list"
+
+    # create datamodule
+    jets = JetDataclass(config=config)
+    jets.preprocess()
+    datamodule = JetsDataloaderModule(config=config, jetdataset=jets)
+    dims, *data = next(datamodule.train.__iter__())
+
+    # create module
+    model = TransdimensionalJumpDiffusion(config,datamodule)
+    st_batch = StructuredDataBatch(data,
+                                   dims,
+                                   datamodule.observed,
+                                   datamodule.exist,
+                                   datamodule.is_onehot,
+                                   datamodule.graphical_structure)
+    #st_batch.to(device)
+    loss, loss_dict = model.jump_diffusion_loss(net=model.net, st_batch=st_batch)
+    
 if __name__=="__main__":
-    test_model()
+    test_loss()

@@ -14,6 +14,15 @@ from multimodal_particles.utils.tensor_operations import (
     create_and_apply_mask_3
 )
 
+MultimodalDatabatch = namedtuple(
+    'MultimodalDatabatch',
+    [
+        "source_continuous","source_discrete","source_mask",
+        "target_continuous","target_discrete","target_mask",
+        "context_continuous","context_discrete"
+    ]
+)
+
 class MultimodalBridgeDataset(Dataset):
 
     def __init__(self, data:JetDataclass, return_type='namedtuple'):

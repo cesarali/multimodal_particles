@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-
+from torch.nn import functional as F 
 #==================================================================
 # QM9 original structures
 #==================================================================
@@ -29,6 +29,9 @@ class StructuredDataBatch():
         self.tuple_batch = tuple_batch
         self._dims = dims
 
+        self.vocab_size_features = graphical_structure.vocab_size_features
+        self.name_to_index = graphical_structure.name_to_index
+        self.names_in_batch = graphical_structure.names_in_batch
         # self.max_dim = self.dims.max()
 
         self.B = self.tuple_batch[0].shape[0]
@@ -124,7 +127,6 @@ class StructuredDataBatch():
         self.tuple_batch = self.gs.remove_problem_dims(self.tuple_batch, self._dims)
         # self.tuple_batch = self.gs.strip_padding(self.tuple_batch, self.max_dim)
     
-
     def get_mask(self, B, include_onehot_channels, include_obs):
         # gets a flat mask that is 1 for dimensions corresponding to a non zeroed out dimension
         # if include_onehot_channels then we assume the flattened length includes flattened onehot channels
@@ -221,13 +223,39 @@ class StructuredDataBatch():
 
         return tmp.get_flat_lats()
 
-class Structure():
+    def from_st_batch_to_multimodal_bridge_databatch(self):
+        self.vocab_size_features
+        device = self.get_device()
 
+        target_discrete_one_hot = self.tuple_batch[self.name_to_index["target_discrete"]] # (B, max_num_particles,vocab_size_features) (one hot)
+        max_target = torch.max(F.softmax(target_discrete_one_hot),dim=-1)
+        target_discrete = max_target.indices.unsqueeze(-1) # (B, max_num_particles,1)
+
+        target_continuous = self.tuple_batch[self.name_to_index["target_continuous"]]
+
+        full_dims = self.get_dims()  # (B,)
+        mask = torch.arange(self.gs.max_num_particles, device=device).view(1, -1) < full_dims.view(-1, 1)  # (B, n_nodes)
+        mask = mask.long().unsqueeze(-1)
+
+        if "context_continuous" in self.names_in_batch:
+            context_continuous = self.tuple_batch[self.name_to_index["context_continuous"]]
+        else:
+            context_continuous = None
+        
+        if "context_discrete" in self.names_in_batch:
+            context_discrete = self.tuple_batch[self.name_to_index["context_discrete"]]
+        else:
+            context_discrete = None
+        
+        return target_discrete_one_hot,target_discrete,target_continuous,context_continuous,context_discrete,mask
+    
+class Structure():
+    """
     #name="qm9"
     #dataset_is_image=[0, 0, 0, 0, 0, 0, 0, 0, 0]
     #dataset_is_onehot = [0, 1, 0, 0, 0, 0, 0, 0, 0]
     #names = ["pos", "atom_type", "charges", "alpha", "homo", "lumo", "gap", "mu", "Cv"]
-
+    """
     def __init__(self, exist, observed, dataset):  #, shapes=None, example=None, names=None):
         """
         Stores metadata about tensor shapes and observedness. One of shapes or example (without batch dimension)
@@ -280,7 +308,6 @@ class Structure():
             return self.get_flattened(existing_data, [1] * len(existing_data))
         else:
             return self.flatten_latents(existing_data, contains_marg=False)
-
 
     def get_exist_mask_after_deleting_dim(self, include_obs, include_onehot_channels):
         problem_dims = self.graphical_structure.problem_dims

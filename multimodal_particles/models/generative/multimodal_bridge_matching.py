@@ -1,10 +1,11 @@
 import torch
+from torch import nn
 import torch.nn as nn
 import lightning as L
 from dataclasses import dataclass
 from typing import List, Tuple, Dict
 
-from multimodal_particles.models.architectures.epic import MultiModalEPiC
+from multimodal_particles.models.architectures.epic import EPiCWrapper
 from multimodal_particles.models.generative.bridges import LinearUniformBridge, TelegraphBridge
 from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
 
@@ -71,6 +72,44 @@ class MultiHeadOutput:
     continuous: torch.Tensor = None
     discrete: torch.Tensor = None
     absorbing: torch.Tensor = None
+
+class MultiModalEPiC(nn.Module):
+    """Permutation equivariant architecture for multi-modal continuous-discrete models"""
+
+    def __init__(self, config: MultimodalBridgeMatchingConfig):
+        super().__init__()
+        self.dim_features_continuous = config.data.dim_features_continuous
+        self.dim_features_discrete = config.data.dim_features_discrete
+        self.vocab_size = config.data.vocab_size_features
+        self.output_dim = self.dim_features_continuous + self.dim_features_discrete * self.vocab_size
+
+        self.epic = EPiCWrapper(config)
+        self.add_discrete_head = config.encoder.add_discrete_head
+        if self.add_discrete_head:
+            self.fc_layer = nn.Sequential(
+                nn.Linear(
+                    self.dim_features_discrete * self.vocab_size,
+                    self.dim_features_discrete * self.vocab_size,
+                ),
+                nn.SELU(),
+                nn.Linear(
+                    self.dim_features_discrete * self.vocab_size,
+                    self.dim_features_discrete * self.vocab_size,
+                ),
+            )
+
+    def forward(
+        self, t, x, k, mask=None, context_continuous=None, context_discrete=None
+    ):
+        h = self.epic(t, x, k, mask, context_continuous, context_discrete) #(B,max_num_particles,output_dim)
+        continuous_head = h[..., : self.dim_features_continuous]
+        discrete_head = h[..., self.dim_features_continuous :]
+        absorbing_head = mask  # TODO
+
+        if self.add_discrete_head:
+            return continuous_head, self.fc_layer(discrete_head), absorbing_head
+        else:
+            return continuous_head, discrete_head, absorbing_head
 
 class MultiModalBridgeMatching(L.LightningModule):
     """Model for hybrid data with varying size"""

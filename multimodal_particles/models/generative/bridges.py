@@ -3,6 +3,7 @@ from torch.nn.functional import softmax
 from torch.distributions import Categorical
 from dataclasses import dataclass
 from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
+from multimodal_particles.config_classes.absorbing_flows_config import AbsorbingConfig
 
 class LinearUniformBridge:
     """Conditional OT Flow-Matching for continuous states.
@@ -168,6 +169,83 @@ class TelegraphBridge:
         kronecker = (k_out == k_in).float()
         prob = 1.0 / S + w_t[:, None, None] * ((-1.0 / S) + kronecker)
         return prob
+
+    def solver_step(self, state, heads, delta_t):
+        """tau-leaping step for master equation solver"""
+        rates = self.rate(t=state.time, k=state.discrete, logits=heads.discrete)
+        assert (rates >= 0).all(), "Negative rates!"
+        state.discrete = state.discrete.squeeze(-1)
+        # max_rate = torch.max(rates, dim=2)[1]
+        all_jumps = torch.poisson(rates * delta_t).to(state.time.device)
+        jump_mask = torch.sum(all_jumps, dim=-1).type_as(state.discrete) <= 1
+        diff = (
+            torch.arange(self.vocab_size, device=state.time.device).view(
+                1, 1, self.vocab_size
+            )
+            - state.discrete[:, :, None]
+        )
+        net_jumps = torch.sum(all_jumps * diff, dim=-1).type_as(state.discrete)
+        state.discrete += net_jumps * jump_mask
+        state.discrete = torch.clamp(state.discrete, min=0, max=self.vocab_size - 1)
+        state.discrete = state.discrete.unsqueeze(-1)
+        state.discrete *= heads.absorbing
+        return state
+
+class AbsorbingBridge:
+    """
+    Samples the survival time of a state in case the end state is 
+    absorving
+
+    - t: time
+    - k0: discrete source state at t=0
+    - k1: discrete  target state at t=1
+    - k: discrete state at time t
+    """
+
+    def __init__(self, config: MultimodalBridgeMatchingConfig|AbsorbingConfig):
+        self.gamma_absorb = torch.tensor(config.bridge.gamma_absorb, dtype=torch.float32)  # Convert gamma to a tensor
+        self.time_epsilon = config.bridge.time_eps
+        self.vocab_size = 2
+
+    def survival_probability(self,t):
+        """
+         \Pr\left(\mbox{killing after time}\; t\right) = \\
+        \exp\left(- \int_0^t F_s ds\right) = e^{-\gamma t} \; \frac{1 - e^{\gamma(t-1)}}{ 1- e^{-\gamma}}
+
+        Args:
+            t (torch.Tensor): Input tensor of shape (B,).
+        Returns:
+            torch.Tensor: Probability values for each t, shape (B,).
+        """
+        exp_neg_gamma_t = torch.exp(-self.gamma_absorb * t)
+        numerator = 1 - torch.exp(self.gamma_absorb * (t - 1))
+        denominator = 1 - torch.exp(-self.gamma_absorb)
+        return exp_neg_gamma_t * numerator / denominator
+
+    def sample(self,time,target_mask):
+        """
+            time: (b,1,1)
+            mask_1: (b, n, 1) current state tensor
+
+        """
+        B = target_mask.size(0)
+        N = target_mask.size(1)
+        time_ = time.repeat((1,N,1)) # (B,N,1)
+        random_ = torch.rand_like(time_)
+        survival_probability = self.survival_probability(time_)
+        mask_t = (random_ < survival_probability ).long()
+
+        #maskes sure that survival is only for targets who are absorved at 1
+        where_alive = torch.where(target_mask) 
+        mask_t[where_alive] = 1
+        return mask_t
+
+    def rate(self, t, k, logits):
+        """t: (b, 1) time tensor
+        k: (b, n, 1) current state tensor
+        logits: (b, n, vocab_size) logits tensor
+        """
+        pass
 
     def solver_step(self, state, heads, delta_t):
         """tau-leaping step for master equation solver"""

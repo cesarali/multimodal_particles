@@ -42,7 +42,7 @@ class JetsDataConfig:
     exist: List[int] = None 
     observed: List[int] = None
 
-    batch_size: int = 4
+    batch_size: int = 28
     data_split_frac: List[float] = field(default_factory=lambda: [0.8, 0.2, 0.0])
     
 @dataclass

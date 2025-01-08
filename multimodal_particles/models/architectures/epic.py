@@ -7,45 +7,7 @@ import torch.nn.utils.weight_norm as weight_norm
 from multimodal_particles.models.architectures.utils import InputEmbeddings
 from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
 
-class MultiModalEPiC(nn.Module):
-    """Permutation equivariant architecture for multi-modal continuous-discrete models"""
-
-    def __init__(self, config: MultimodalBridgeMatchingConfig):
-        super().__init__()
-        self.dim_features_continuous = config.data.dim_features_continuous
-        self.dim_features_discrete = config.data.dim_features_discrete
-        self.vocab_size = config.data.vocab_size_features
-        self.output_dim = self.dim_features_continuous + self.dim_features_discrete * self.vocab_size
-
-        self.epic = EPiC(config)
-        self.add_discrete_head = config.encoder.add_discrete_head
-        if self.add_discrete_head:
-            self.fc_layer = nn.Sequential(
-                nn.Linear(
-                    self.dim_features_discrete * self.vocab_size,
-                    self.dim_features_discrete * self.vocab_size,
-                ),
-                nn.SELU(),
-                nn.Linear(
-                    self.dim_features_discrete * self.vocab_size,
-                    self.dim_features_discrete * self.vocab_size,
-                ),
-            )
-
-    def forward(
-        self, t, x, k, mask=None, context_continuous=None, context_discrete=None
-    ):
-        h = self.epic(t, x, k, mask, context_continuous, context_discrete) #(B,max_num_particles,output_dim)
-        continuous_head = h[..., : self.dim_features_continuous]
-        discrete_head = h[..., self.dim_features_continuous :]
-        absorbing_head = mask  # TODO
-
-        if self.add_discrete_head:
-            return continuous_head, self.fc_layer(discrete_head), absorbing_head
-        else:
-            return continuous_head, discrete_head, absorbing_head
-
-class EPiC(nn.Module):
+class EPiCWrapper(nn.Module):
     """Model wrapper for EPiC Network
 
     Forward pass:
@@ -227,7 +189,6 @@ class EPiC_Projection(nn.Module):
         x_global = F.leaky_relu(self.global_1(x_global))
         x_global = F.leaky_relu(self.global_2(x_global))
         return x_local * mask, x_global
-
 
 class EPiC_layer(nn.Module):
     # based on https://github.com/uhh-pd-ml/EPiC-GAN/blob/main/models.py

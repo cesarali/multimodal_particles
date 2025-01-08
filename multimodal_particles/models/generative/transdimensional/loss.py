@@ -47,7 +47,7 @@ def add_noise(st_batch,noise_schedule,forward_rate,min_t):
     st_batch.delete_dims(new_dims=dims_xt)
     # adjust
     st_batch.gs.adjust_st_batch(st_batch)
-    return st_batch,ts,x0_dims,B,noise,device,x
+    return st_batch,ts,x0_dims,dims_xt,B,noise,device,x
 
 class JumpLossFinalDim:
     
@@ -90,7 +90,7 @@ class JumpLossFinalDim:
             net.model.noise_schedule = self.noise_schedule
 
         # inputs network and structured data batch
-        st_batch,ts,x0_dims,B,noise,device,x = add_noise(st_batch,self.noise_schedule,self.forward_rate,self.min_t)
+        st_batch,ts,x0_dims,dims_xt,B,noise,device,x = add_noise(st_batch,self.noise_schedule,self.forward_rate,self.min_t)
 
         # first network pass
         to_predict = {'eps': 'eps', 'x0': 'x0', 'edm': 'x0'}[self.loss_type]
@@ -103,7 +103,7 @@ class JumpLossFinalDim:
             D_xt, rate_xt, dummy_mean_std, x0_dim_logits = net(st_batch, ts=ts.to(device), forward_rate=self.forward_rate, predict=to_predict)
         assert rate_xt.shape == (B, 1)
 
-        assert x0_dim_logits.shape == (B, st_batch.gs.max_problem_dim)
+        assert x0_dim_logits.shape == (B, st_batch.gs.max_num_particles)
         # x0_dims (B,) 1 to max_dim
         # so need to subtract 1 for ce loss
         ce_loss = F.cross_entropy(x0_dim_logits, x0_dims.to(device)-1, reduction='none')
@@ -152,7 +152,7 @@ class JumpLossFinalDim:
         # if dims[idx] == max_dim then only do the log bit
         # if dims[idx] == 1 then only do the non-log bit
         rate_loss = \
-            (dims_xt < st_batch.gs.max_problem_dim) * rate_xt[:, 0] \
+            (dims_xt < st_batch.gs.max_num_particles) * rate_xt[:, 0] \
             - (dims_xt >1) * f_rate_vs_t * torch.log(rate_delxt[:, 0] + 1e-12)
         assert rate_loss.shape == (B,)
 
@@ -185,6 +185,98 @@ class JumpLossFinalDim:
         else:
             nearest_atom_loss = torch.zeros_like(rate_loss)
 
+        # Detect invalid batch elements (those with NaNs in `rate_delxt`, `mean_std`, or `near_atom_logits`)
+        valid_mask = ~torch.isnan(rate_delxt).any(dim=1)  # Shape: (B,)
+        valid_mask = valid_mask & ~torch.isnan(mean_std[0]).any(dim=1)
+        valid_mask = valid_mask & ~torch.isnan(mean_std[1]).any(dim=1)
+        valid_mask = valid_mask & ~torch.isnan(near_atom_logits).any(dim=1)
+
+        # Apply mask to all relevant tensors
+        rate_delxt = rate_delxt[valid_mask]
+        mean_std = [mean_std[0][valid_mask], mean_std[1][valid_mask]]
+        near_atom_logits = near_atom_logits[valid_mask]
+        dims_xt = dims_xt[valid_mask]
+        f_rate_vs_t = f_rate_vs_t[valid_mask]
+        final_dim_mask = final_dim_mask[valid_mask]
+        score_loss = score_loss[valid_mask]
+        auto_loss = auto_loss[valid_mask] if 'auto_loss' in locals() else torch.zeros_like(score_loss)
+        rate_loss = rate_loss[valid_mask]
+        nearest_atom_loss = nearest_atom_loss[valid_mask] if self.nearest_atom_pred else torch.zeros_like(score_loss)
+
+        # Recompute the batch size after masking
+        B = valid_mask.sum().item()
+
+        # Safeguard: If all batch elements are invalid, return a zero loss
+        if B == 0:
+            loss = torch.tensor(0.0, device=x.device)
+            loss_components = {
+                'score_loss': torch.tensor(0.0, device=x.device),
+                'rate_loss': torch.tensor(0.0, device=x.device),
+                'auto_loss': torch.tensor(0.0, device=x.device),
+                'ce_loss': torch.tensor(0.0, device=x.device),
+                'nearest_atom_loss': torch.tensor(0.0, device=x.device),
+                'max_rate_xt': torch.tensor(0.0, device=x.device),
+                'min_rate_delxt': torch.tensor(0.0, device=x.device),
+                'min_auto_std': torch.tensor(0.0, device=x.device),
+                'max_auto_L2': torch.tensor(0.0, device=x.device),
+            }
+            return loss, loss_components
+
+        # Recompute the loss with the filtered batch
+        loss = self.score_loss_weight * score_loss + \
+            self.rate_loss_weight * (1 / x.shape[1]) * rate_loss.view(B, 1) + \
+            self.auto_loss_weight * (1 / x.shape[1]) * auto_loss.view(B, 1) + \
+            self.x0_logit_ce_loss_weight * (1 / x.shape[1]) * ce_loss.view(B, 1) + \
+            self.nearest_atom_loss_weight * (1 / x.shape[1]) * nearest_atom_loss.view(B, 1)
+
+        loss_components = {
+            'score_loss': score_loss,
+            'rate_loss': rate_loss.view(B, 1),
+            'auto_loss': auto_loss.view(B, 1),
+            'ce_loss': ce_loss.view(B, 1),
+            'nearest_atom_loss': nearest_atom_loss.view(B, 1),
+            'max_rate_xt': rate_xt.max(),
+            'min_rate_delxt': rate_delxt.min(),
+            'min_auto_std': std.min(),
+            'max_auto_L2': ((auto_target - mean)**2).max(),
+        }
+
+        if self.mean_or_sum_over_dim == 'mean':
+            loss = (1 / D_xt.shape[1]) * loss
+        elif self.mean_or_sum_over_dim == 'sum':
+            loss = loss
+        else:
+            raise ValueError(self.mean_or_sum_over_dim)
+
+        return loss, loss_components
+
+
+JumpLossFinalDim_to_kwargs = {
+    JumpLossFinalDim: set([
+        ('rate_function_name', 'click.Choice([\'const\', \'quartic\', \'step\', \'cosine\', \'dimsteprate\', \'pendulum\', \'triangle\', \'twostep\'])', 'const'),
+        ('min_t', 'float', 0.001),
+        ('vp_sde_beta_min', 'float', 0.1),
+        ('vp_sde_beta_max', 'float', 20.0),
+        ('rate_cut_t', 'float', 0.5),
+        ('loss_type', 'str', 'eps'),
+        ('x0_logit_ce_loss_weight', 'float', 0.1),
+        ('rate_loss_weight', 'float', 1),
+        ('score_loss_weight', 'float', 1),
+        ('auto_loss_weight', 'float', 1),
+        ('nearest_atom_loss_weight', 'float', 1.0),
+        ('noise_schedule_name', 'click.Choice([\'vp_sde\', \'nonisocosine\', \'polynomial\'])', 'vp_sde'),
+        ('mean_or_sum_over_dim', 'click.Choice([\'mean\', \'sum\'])', 'sum'),
+        ('nearest_atom_pred', 'str2bool', 'False'),
+    ]),
+}
+
+losses_to_kwargs = {
+    l.__name__: kwargs for l, kwargs in it.chain(
+        JumpLossFinalDim_to_kwargs.items(),
+    )
+}
+
+"""
         # return loss unaveraged
         loss = self.score_loss_weight * score_loss + \
             self.rate_loss_weight * (1/x.shape[1]) * rate_loss.view(B, 1) + \
@@ -213,27 +305,5 @@ class JumpLossFinalDim:
 
         return loss, loss_components
 
-JumpLossFinalDim_to_kwargs = {
-    JumpLossFinalDim: set([
-        ('rate_function_name', 'click.Choice([\'const\', \'quartic\', \'step\', \'cosine\', \'dimsteprate\', \'pendulum\', \'triangle\', \'twostep\'])', 'const'),
-        ('min_t', 'float', 0.001),
-        ('vp_sde_beta_min', 'float', 0.1),
-        ('vp_sde_beta_max', 'float', 20.0),
-        ('rate_cut_t', 'float', 0.5),
-        ('loss_type', 'str', 'eps'),
-        ('x0_logit_ce_loss_weight', 'float', 0.1),
-        ('rate_loss_weight', 'float', 1),
-        ('score_loss_weight', 'float', 1),
-        ('auto_loss_weight', 'float', 1),
-        ('nearest_atom_loss_weight', 'float', 1.0),
-        ('noise_schedule_name', 'click.Choice([\'vp_sde\', \'nonisocosine\', \'polynomial\'])', 'vp_sde'),
-        ('mean_or_sum_over_dim', 'click.Choice([\'mean\', \'sum\'])', 'sum'),
-        ('nearest_atom_pred', 'str2bool', 'False'),
-    ]),
-}
 
-losses_to_kwargs = {
-    l.__name__: kwargs for l, kwargs in it.chain(
-        JumpLossFinalDim_to_kwargs.items(),
-    )
-}
+"""

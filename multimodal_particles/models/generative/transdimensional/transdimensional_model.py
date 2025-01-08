@@ -8,9 +8,9 @@ from multimodal_particles.data.particle_clouds.jets_dataloader import (
     JetsGraphicalStructure
 )
 
-from multimodal_particles.models.architectures.epic import EPiC
+from multimodal_particles.models.architectures.epic import EPiCWrapper
 from multimodal_particles.models.generative.transdimensional.structure import Structure
-from multimodal_particles.config_classes.transdimensional_config_unconditional import TransdimensionalEpicConfig
+from multimodal_particles.config_classes.transdimensional_unconditional_config import TransdimensionalEpicConfig
 from multimodal_particles.models.generative.diffusion.noising import VP_SDE, ConstForwardRate, StepForwardRate,StateIndependentForwardRate
 from multimodal_particles.models.generative.diffusion.noising import get_rate_using_x0_pred
 from multimodal_particles.models.architectures.gsdm import AttnBlock, ResnetBlock, get_timestep_embedding
@@ -34,6 +34,13 @@ def get_noise_schedule(noise_schedule_name, max_problem_dim, vp_sde_beta_min, vp
         return VP_SDE(max_problem_dim, vp_sde_beta_min, vp_sde_beta_max)
     else:
         raise ValueError(noise_schedule_name)
+
+"""
+
+The classes are ordered here in abstraction fashion the upper classes is the outer 
+layers of the hierarchy
+
+"""
 
 class TransdimensionalJumpDiffusion(L.LightningModule):
     """
@@ -59,7 +66,6 @@ class TransdimensionalJumpDiffusion(L.LightningModule):
 
     def _set_up(self,datamodule:JetsDataloaderModule):
         self.structure =  Structure(datamodule.exist, datamodule.observed, datamodule)
-
         self.net = EpsilonPrecond(self.structure,self.config)
 
         self.forward_rate = get_forward_rate(
@@ -148,7 +154,7 @@ class TransdimensionalEPiC(nn.Module):
         self.output_dim = self.dim_features_continuous + self.dim_features_discrete * self.vocab_size_features
         self.output_dim_local = config.encoder.dim_hidden_local
 
-        self.epic = EPiC(config)
+        self.epic = EPiCWrapper(config)
         
         self.add_discrete_head = config.encoder.add_discrete_head
         if self.add_discrete_head:
@@ -249,9 +255,17 @@ class TransdimensionalEPiC(nn.Module):
         device = st_batch.get_device()
         B, n_nodes, _ = x.shape
 
-        target_discrete_one_hot,target_discrete,target_continuous,context_continuous,context_discrete,mask = self.from_st_batch_to_multimodal_bridge_databatch(st_batch)
+        target_discrete_one_hot,target_discrete,target_continuous,context_continuous,context_discrete,mask = st_batch.from_st_batch_to_multimodal_bridge_databatch()
+
+        assert not torch.isnan(target_discrete_one_hot).any()
+        assert not torch.isnan(target_discrete).any()
+        assert not torch.isnan(target_continuous).any()
+        assert not torch.isnan(mask).any()
         ts = ts.unsqueeze(-1).unsqueeze(-1)
         net_out, net_last_layer = self.epic(ts, target_continuous, target_discrete, mask, context_continuous, context_discrete,output_hidden_local=True)
+        #assert not torch.isnan(net_out).any()
+        #assert not torch.isnan(net_last_layer).any()
+
 
         node_mask = mask
         #node_mask = atom_mask.unsqueeze(2)
@@ -408,7 +422,7 @@ class TransdimensionalEPiC(nn.Module):
 
         auto_mean_out = auto_mask * auto_mean_out
         auto_std_out = auto_mask * auto_std_out
-        
+        #        _, rate_delxt,  mean_std,       _,                          near_atom_logits  
         return D_xt, rate_out, (auto_mean_out, auto_std_out), x0_dim_logits, near_atom_logits
         
     def from_st_batch_to_multimodal_bridge_databatch(self,st_batch):
