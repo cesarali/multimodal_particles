@@ -14,8 +14,8 @@ from multimodal_particles.data.particle_clouds.utils import (
     extract_aoj_features,
     sample_noise,
     sample_masks,
-    flavor_to_onehot,
-    states_to_flavor,
+    physics_to_onehot,
+    tokens_to_physics,
 )
 
 
@@ -51,6 +51,16 @@ class ParticleClouds:
             self.continuous, self.discrete, self.mask = extract_aoj_features(
                 data_paths, **data_params
             )
+
+            if data_params.get("fill_target_with_noise", False):
+                #...sample noise
+                noise_continuous = torch.randn_like(self.continuous)
+                noise_discrete = torch.randint_like(self.mask, 0, 8)
+                noise_discrete = torch.cat(tokens_to_physics(noise_discrete), dim=-1)
+                #...fill target with noise:
+                self.continuous += noise_continuous * ~(self.mask > 0)
+                self.discrete += noise_discrete * ~(self.mask > 0)
+
 
         elif "Noise" in dataset:
             self.continuous, self.discrete = sample_noise(dataset, **data_params)
@@ -94,11 +104,11 @@ class ParticleClouds:
         self, output_continuous="standardize", output_discrete="tokens", stats=None
     ):
         if output_discrete == "onehot_dequantize":
-            one_hot = flavor_to_onehot(self.discrete[..., :-1], self.discrete[..., -1])
+            one_hot = physics_to_onehot(self.discrete[..., :-1], self.discrete[..., -1])
             self.continuous = torch.cat([self.continuous, one_hot], dim=-1)
             del self.discrete
         elif output_discrete == "tokens":
-            one_hot = flavor_to_onehot(self.discrete[..., :-1], self.discrete[..., -1])
+            one_hot = physics_to_onehot(self.discrete[..., :-1], self.discrete[..., -1])
             self.discrete = torch.argmax(one_hot, dim=-1).unsqueeze(-1).long()
 
         if output_continuous == "standardize":
@@ -131,7 +141,7 @@ class ParticleClouds:
             discrete = (
                 torch.argmax(self.continuous[..., 3:], dim=-1).unsqueeze(-1).long()
             )
-            self.flavor, self.charge = states_to_flavor(discrete)
+            self.flavor, self.charge = tokens_to_physics(discrete)
             self.discrete = torch.cat([self.flavor, self.charge], dim=-1)
             self.flavor *= self.mask
             self.charge *= self.mask
@@ -139,7 +149,7 @@ class ParticleClouds:
             self.continuous = self.continuous[..., :3]
 
         if input_discrete == "tokens":
-            self.flavor, self.charge = states_to_flavor(self.discrete)
+            self.flavor, self.charge = tokens_to_physics(self.discrete)
             self.discrete = torch.cat([self.flavor, self.charge], dim=-1)
             self.flavor *= self.mask
             self.charge *= self.mask
