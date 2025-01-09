@@ -41,9 +41,10 @@ class JetsDataConfig:
         "hist_num_particles": None # dict with histogram of number of particles
     })
     source_masks_from_target_masks: bool = True # if True, source mask is sampled from multinomial dist from number of target particles
+
     # dimensions 
     min_num_particles: int=0
-    max_num_particles: int=128
+    max_num_particles: int=109
     num_jets: int=1000
     dim_features_continuous: int = 3
     dim_features_discrete: int = 1
@@ -51,6 +52,7 @@ class JetsDataConfig:
     dim_context_discrete: int = 0
     vocab_size_features: int = 8
     vocab_size_context: int = 0
+
     # type of databatch
     return_type: str = "namedtuple" # list  # if list the dataloader is prepared for transdimensional and does not send context
     
@@ -96,6 +98,7 @@ class GeneratorsHeadConfig:
     # Heads for Rate and Particle Creations
     rate_use_x0_pred: bool = True
     transformer_dim: int = 128
+    temb_dim: int = 128
     n_heads: int = 2
     n_attn_blocks: int = 2
     detach_last_layer: bool = True

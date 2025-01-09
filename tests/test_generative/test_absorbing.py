@@ -35,7 +35,7 @@ def test_bridge():
     state = model.sample_bridges(random_databatch)
     assert state is not None
 
-def test_model():
+def test_absorbing_head():
     config = AbsorbingConfig()
     model = AbsorbingFlow(config)
 
@@ -46,7 +46,9 @@ def test_model():
 
     state = model.sample_bridges(random_databatch)
     forward_head = model(state,random_databatch)
+    loss_absorbing = model.loss_absorbing(forward_head,random_databatch)
+    print(loss_absorbing)
 
 
 if __name__=="__main__":
-    test_model()
+    test_absorbing_head()

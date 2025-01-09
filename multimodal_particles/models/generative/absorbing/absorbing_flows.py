@@ -3,7 +3,7 @@ import torch.nn as nn
 import lightning as L
 from dataclasses import dataclass
 from typing import List
-
+from torch.nn.functional import one_hot
 from multimodal_particles.models.architectures.epic import EPiCWrapper
 from multimodal_particles.config_classes.absorbing_flows_config import AbsorbingConfig
 from multimodal_particles.models.generative.bridges import LinearUniformBridge, TelegraphBridge, AbsorbingBridge
@@ -11,10 +11,14 @@ from multimodal_particles.models.architectures.gsdm import AttnBlock, ResnetBloc
 
 @dataclass
 class AbsorbingBridgeState:
-    time: torch.Tensor = None
-    continuous: torch.Tensor = None
-    discrete: torch.Tensor = None
-    mask_t: torch.Tensor = None
+    """
+    this is the data that one is requiered to 
+    evolve a process that generates
+    """
+    time: torch.Tensor = None #[B,1,1]
+    continuous: torch.Tensor = None #[B,num_particles,continuos_feature_dim]
+    discrete: torch.Tensor = None #[B,num_particles,1]
+    mask_t: torch.Tensor = None #[B,num_particles,1]
 
     def to(self, device):
         return AbsorbingBridgeState(
@@ -59,7 +63,7 @@ class AbsorbtionRate(nn.Module):
     def __init__(self, config:AbsorbingConfig):
         super().__init__()
 
-    def set_up():
+    def set_up(self):
         """"""
         self.transformer_dim = transformer_dim
         self.temb_dim = self.transformer_dim
@@ -88,7 +92,6 @@ class AbsorbtionRate(nn.Module):
 
         self.pre_rate_proj = nn.Linear(self.transformer_dim, self.transformer_dim)
         self.post_rate_proj = nn.Linear(self.transformer_dim, self.rdim)
-
 
     def forward(self,net_last_layer):
         """ """
@@ -182,8 +185,7 @@ class AbsorbingEPiC(nn.Module):
             )
 
     def _set_up_absorbing_head(self):
-        output_dim_global = self.encoder_output_dim_local
-
+        encoder_output_dim_local = self.encoder_output_dim_local
         transformer_dim = self.config.generator.transformer_dim
         n_heads = self.config.generator.n_heads
         n_attn_blocks = self.config.generator.n_attn_blocks
@@ -191,21 +193,17 @@ class AbsorbingEPiC(nn.Module):
         self.detach_last_layer = self.config.generator.detach_last_layer
         self.augment_dim = self.config.generator.augment_dim
 
-        if self.rate_use_x0_pred:
-            self.rdim = self.max_num_particles
-        else:
-            self.rdim = 1
-
         self.transformer_dim = transformer_dim
         self.temb_dim = self.transformer_dim
-
         self.temb_net = nn.Linear(self.temb_dim, self.temb_dim)
 
+        # the first transformer projection concatenates the 
+        # encoder_output_dim_local with the one hot vector binary representation
         self.transformer_1_proj_in = nn.Linear(
-            output_dim_global + self.vocab_size_features, self.transformer_dim
+            encoder_output_dim_local + 2, self.transformer_dim
         )
 
-        # these are for the head that does the rate and nearest atom prediction
+        # these are for the head that does the rate prediction
         self.attn_blocks = nn.ModuleList([
             AttnBlock(self.transformer_dim, n_heads, attn_dim_reduce=1)
             for _ in range(n_attn_blocks)
@@ -218,66 +216,48 @@ class AbsorbingEPiC(nn.Module):
         ])
 
         self.pre_rate_proj = nn.Linear(self.transformer_dim, self.transformer_dim)
-        self.post_rate_proj = nn.Linear(self.transformer_dim, self.rdim)
+        self.post_rate_proj = nn.Linear(self.transformer_dim, 1)
         
     def _set_up_continuous_head(self):
         """ at the moment, similar to the gnn the output is directly use as the head"""
         pass
 
     def absorbing_head(self,state:AbsorbingBridgeState,net_out,net_last_layer):
-        node_mask = mask
-        #node_mask = atom_mask.unsqueeze(2)
+        mask_t = state.mask_t
+        B = state.mask_t.size(0)
+        n_particles = state.mask_t.size(1)
 
-        assert net_out.shape == (B, n_nodes, self.output_dim)
-        x_out = net_out[:, :, 0:self.dim_features_continuous]
-        atom_type_one_hot_out = net_out[:, :, self.dim_features_continuous:]
+        target_discrete_one_hot = one_hot(mask_t.squeeze())
 
-        D_xt = torch.cat([
-            x_out.flatten(start_dim=1),
-            atom_type_one_hot_out.flatten(start_dim=1),
-        ], dim=1)
-        assert D_xt.shape == (B, n_nodes * (self.output_dim))
-
-        assert net_last_layer.shape == (B, n_nodes, self.output_dim_local)
+        assert net_out.shape == (B, n_particles, self.encoder_output_dim)
+        assert net_last_layer.shape == (B, n_particles, self.encoder_output_dim_local)
         
         if self.detach_last_layer:
             net_last_layer = net_last_layer.detach()
 
-        ts = ts.squeeze()
+        # obtain time embedings
+        ts = state.time.squeeze()
         temb = get_timestep_embedding(ts*1000, self.temb_dim)
         temb = self.temb_net(temb) # (B, C)
-        temb = temb.view(B, self.temb_dim, 1).repeat(1, 1, n_nodes) # (B, C, N)
+        temb = temb.view(B, self.temb_dim, 1).repeat(1, 1, n_particles) # (B, C, N)
 
-        #==========================================================================
-        # DATA APPEARS 
-        h = torch.cat([
-            net_last_layer,
-            target_discrete_one_hot,
-        ], dim=2)
-        # ==========================================================================
-        # self.egnn_net.egnn.hidden_nf -> self.output_dim_local
-
-        assert h.shape == (B, n_nodes, self.output_dim_local + self.vocab_size_features)
+        h = torch.cat([net_last_layer,target_discrete_one_hot], dim=2)
+        assert h.shape == (B, n_particles, self.encoder_output_dim_local + 2)
         h = self.transformer_1_proj_in(h)
-        assert h.shape == (B, n_nodes, self.transformer_dim)
+        assert h.shape == (B, n_particles, self.transformer_dim)
         h = h.transpose(1,2)
-        assert h.shape == (B, self.transformer_dim, n_nodes)
+        assert h.shape == (B, self.transformer_dim, n_particles)
 
         for (res_block, attn_block) in zip(self.res_blocks, self.attn_blocks):
             h = res_block(h, temb)
             h = attn_block(h)
 
         h = h.transpose(1, 2)
-        assert h.shape == (B, n_nodes, self.transformer_dim)
+        assert h.shape == (B, n_particles, self.transformer_dim)
 
         rate_emb = self.pre_rate_proj(h) # (B, N, C)
-        rate_emb = torch.mean(rate_emb, dim=1) # (B, C)
-        rate_emb = self.post_rate_proj(rate_emb) # (B, rdim)
-
-        if self.rate_use_x0_pred:
-            x0_dim_logits = rate_emb
-        else:
-            x0_dim_logits = torch.zeros((B, st_batch.gs.max_num_particles), device=device)
+        rate_emb = self.post_rate_proj(rate_emb) # (B, N, 2)
+        x0_dim_logits = rate_emb
 
         return x0_dim_logits
     
@@ -292,7 +272,7 @@ class AbsorbingEPiC(nn.Module):
         net_out[..., : self.dim_features_continuous]
         return net_out[..., : self.dim_features_continuous]
 
-    def forward(self,state:AbsorbingBridgeState,batch):
+    def forward(self,state:AbsorbingBridgeState,batch)->OutputHeads:
         # select values
         t=state.time
         continuous=state.continuous
@@ -305,7 +285,7 @@ class AbsorbingEPiC(nn.Module):
 
         continuous_head = self.continuous_head(state,net_out,net_last_layer)
         discrete_head = self.discrete_head(state,net_out,net_last_layer)
-        absorbing_head = mask  # TODO
+        absorbing_head = self.absorbing_head(state,net_out,net_last_layer)
 
         return OutputHeads(continuous_head, discrete_head, absorbing_head)
         
@@ -317,7 +297,7 @@ class AbsorbingFlow(L.LightningModule):
         self.config = config
         self.vocab_size = config.data.vocab_size_features
 
-        self.encoder = AbsorbingEPiC(config)
+        self.generator = AbsorbingEPiC(config)
 
         self.bridge_continuous = LinearUniformBridge(config)
         self.bridge_discrete = TelegraphBridge(config)
@@ -325,20 +305,20 @@ class AbsorbingFlow(L.LightningModule):
 
         self.loss_continuous_fn = nn.MSELoss(reduction="none")
         self.loss_discrete_fn = nn.CrossEntropyLoss(reduction="none")
-        self.loss_absorbing_fn = nn.CrossEntropyLoss(reduction="none") # implement absorbing loss
+        self.loss_absorbing_fn = nn.BCEWithLogitsLoss(reduction="none") # implement absorbing loss
+        
+        self.min_t = config.bridge.time_eps
 
         self.save_hyperparameters()
 
-    def forward(self, state: AbsorbingBridgeState, batch):
-        return self.encoder(state,batch)
+    def forward(self, state: AbsorbingBridgeState, batch)->OutputHeads:
+        return self.generator(state,batch)
 
-    def sample_bridges(self, batch):
+    def sample_bridges(self, batch)->AbsorbingBridgeState:
         """sample stochastic bridges"""
-        t = torch.rand(
+        t = self.min_t + (1 - self.min_t) * torch.rand(
             batch.target_continuous.shape[0], device=batch.target_continuous.device
         ).type_as(batch.target_continuous)
-
-        # ts = self.min_t + (1-self.min_t) * torch.rand((B,)) # (B,)
 
         time = self.reshape_time(t, batch.target_continuous)
 
@@ -359,7 +339,6 @@ class AbsorbingFlow(L.LightningModule):
     def loss_continuous(self, heads: OutputHeads, state: AbsorbingBridgeState, batch):
         """mean square error loss for velocity field"""
         vector = heads.continuous
-        mask = heads.absorbing
 
         ut = self.bridge_continuous.drift(
             t=state.time,
@@ -367,24 +346,27 @@ class AbsorbingFlow(L.LightningModule):
             x0=batch.source_continuous,
             x1=batch.target_continuous,
         ).to(vector.device)
-        loss_mse = self.loss_continuous_fn(vector, ut) * mask
-        return loss_mse.sum() / mask.sum()
+
+        loss_mse = self.loss_continuous_fn(vector, ut)
+
+        return loss_mse.sum(axis=1).mean()
 
     def loss_discrete(self, heads: OutputHeads, batch):
         """cross-entropy loss for discrete state classifier"""
         logits = heads.discrete
-        targets = batch.target_discrete
         mask = heads.absorbing
         logits = heads.discrete.reshape(-1, self.vocab_size)
         targets = batch.target_discrete.reshape(-1).long()
         targets = targets.to(logits.device)
-        mask = mask.reshape(-1)
-        loss_ce = self.loss_discrete_fn(logits, targets) * mask
-        return loss_ce.sum() / mask.sum()
+        loss_ce = self.loss_discrete_fn(logits, targets) 
+        return loss_ce.sum(axis=1).mean()
 
     def loss_absorbing(self, heads: OutputHeads, batch):
-        # TODO
-        pass
+        target_mask = batch.target_mask.squeeze().float()
+        absorbing_loss = self.loss_absorbing_fn(heads.absorbing.reshape(-1,1),target_mask.reshape(-1,1))
+        absorbing_loss = absorbing_loss.sum(axis=-1)
+        absorbing_loss = absorbing_loss.mean()
+        return absorbing_loss
 
     def reshape_time(self, t, x):
         if isinstance(t, (float, int)):
