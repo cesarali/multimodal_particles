@@ -286,7 +286,7 @@ def sample_masks(**args):
         return masks.unsqueeze(-1).long()
 
 
-def flavor_to_onehot(flavor_tensor, charge_tensor):
+def physics_to_onehot(flavor_tensor, charge_tensor):
     """inputs:
         - flavor in one-hot (isPhoton, isNeutralHadron, isChargedHadron, isElectron, isMuon)
         - charge (-1, 0, +1)
@@ -307,7 +307,7 @@ def flavor_to_onehot(flavor_tensor, charge_tensor):
     return one_hot
 
 
-def states_to_flavor(states):
+def tokens_to_physics(states):
     """Get the (flavor, charge) representation of each particle:
     0 -> (0, 0)   photon
     1 -> (1, 0)   neutral hadron

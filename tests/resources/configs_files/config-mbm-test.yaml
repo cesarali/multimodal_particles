@@ -18,6 +18,7 @@ data:
   source_preprocess_continuous: standardize
   source_preprocess_discrete: tokens
   source_masks_from_target_masks: true # if True, source mask is sampled from multinomial dist from number of target particles
+  fill_target_with_noise: true
   min_num_particles: 0
   max_num_particles: 128
   num_jets: 100

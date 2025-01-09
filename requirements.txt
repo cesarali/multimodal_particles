@@ -9,3 +9,5 @@ scipy
 scikit-learn
 pytest
 mlflow
+wandb
+comet_ml
