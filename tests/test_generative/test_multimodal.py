@@ -43,7 +43,6 @@ def test_model():
     model = MultiModalBridgeMatching(model_config)
     state = model.sample_bridges(random_databatch)
     head_output = model(state,random_databatch)
-
     print(state.time.shape, state.continuous.shape, state.discrete.shape, state.absorbing.shape)
 
 if __name__=="__main__":

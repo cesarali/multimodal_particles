@@ -9,6 +9,8 @@ from multimodal_particles.config_classes.absorbing_flows_config import Absorbing
 from multimodal_particles.models.generative.bridges import LinearUniformBridge, TelegraphBridge, AbsorbingBridge
 from multimodal_particles.models.architectures.gsdm import AttnBlock, ResnetBlock, get_timestep_embedding
 
+from multimodal_particles.utils.losses import MultiHeadLoss
+
 @dataclass
 class AbsorbingBridgeState:
     """
@@ -221,7 +223,8 @@ class AbsorbingFlow(L.LightningModule):
         self.loss_continuous_fn = nn.MSELoss(reduction="none")
         self.loss_discrete_fn = nn.CrossEntropyLoss(reduction="none")
         self.loss_absorbing_fn = nn.BCEWithLogitsLoss(reduction="none") # implement absorbing loss
-        
+        self.loss_multihead = MultiHeadLoss(mode='learnable',number_of_losses=3)
+
         self.min_t = config.bridge.time_eps
 
         self.save_hyperparameters()
@@ -277,7 +280,7 @@ class AbsorbingFlow(L.LightningModule):
         targets = targets.to(logits.device)
         loss_ce = self.loss_discrete_fn(logits, targets)
         loss_ce = loss_ce.reshape(B,num_particles)
-        
+
         return loss_ce.sum(axis=1).mean()
 
     def loss_absorbing(self, heads: OutputHeads, batch):
@@ -301,10 +304,10 @@ class AbsorbingFlow(L.LightningModule):
         state = self.sample_bridges(batch)
         state = state.to(self.device)
         heads = self.forward(state, batch)
-        loss_continous = self.loss_continuous(heads, state, batch)
+        loss_continuous = self.loss_continuous(heads, state, batch)
         loss_discrete = self.loss_discrete(heads, batch)
         loss_absorbing = self.loss_absorbing(heads, batch)
-        loss = loss_continous + loss_discrete + loss_absorbing
+        loss, _ = self.loss_multihead([loss_continuous, loss_discrete,loss_absorbing])
         self.log("train_loss", loss, on_step=True, on_epoch=True)
         return loss
 
