@@ -41,6 +41,9 @@ class JetsDataConfig:
         "hist_num_particles": None # dict with histogram of number of particles
     })
     source_masks_from_target_masks: bool = True # if True, source mask is sampled from multinomial dist from number of target particles
+
+    fill_target_with_noise:bool =  True
+
     # dimensions 
     min_num_particles: int=0
     max_num_particles: int=128

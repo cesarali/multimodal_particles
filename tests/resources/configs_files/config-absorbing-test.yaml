@@ -17,6 +17,7 @@ data:
   dim_context_discrete: 0
   dim_features_continuous: 3
   dim_features_discrete: 1
+  fill_target_with_noise: true
   max_num_particles: 109
   min_num_particles: 0
   num_jets: 1000
@@ -57,6 +58,8 @@ encoder:
   name: MultiModalEPiC
   num_blocks: 2
   skip_connection: true
+experiment_dir: null
+experiment_indentifier: null
 experiment_name: absorbing_flows
 generator:
   augment_dim: 9
