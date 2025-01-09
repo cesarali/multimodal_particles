@@ -10,6 +10,10 @@ from lightning.pytorch.loggers import MLFlowLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
 
 from multimodal_particles.utils.experiment_files import ExperimentsFiles
+from multimodal_particles.config_classes.absorbing_flows_config import AbsorbingConfig
+from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
+from multimodal_particles.config_classes.transdimensional_unconditional_config import TransdimensionalEpicConfig
+
 from multimodal_particles.data.particle_clouds.jets_dataloader import JetsDataloaderModule 
 from multimodal_particles.models.generative.multimodal_bridge_matching import MultiModalBridgeMatching
 
@@ -28,7 +32,12 @@ class BasicLightningExperiment(ABC):
     logger: MLFlowLogger = None
     callbacks: List[ModelCheckpoint] = None
 
-    def __init__(self, config = None, experiment_dir: str = None, map_location: str = "cuda"):
+    def __init__(
+            self, 
+            config:AbsorbingConfig|MultimodalBridgeMatchingConfig|TransdimensionalEpicConfig = None, 
+            experiment_dir: str = None, 
+            map_location: str = "cuda"
+        ):
         """
         Initializes the experiment.
         If `experiment_dir` is provided, sets up from a saved directory; otherwise, creates a new experiment.
@@ -41,7 +50,7 @@ class BasicLightningExperiment(ABC):
         else:
             self.set_to_train = True
             self.config = config
-            self.experiment_name = config.experiment.experiment_name
+            self.experiment_name = config.experiment_name
             self.setup_experiment_files()
             self.setup_logger()
             self.setup_callbacks()
@@ -52,9 +61,9 @@ class BasicLightningExperiment(ABC):
         """
         Sets up experiment files for storing logs, checkpoints, and configurations.
         """
-        self.experiment_files = ExperimentsFiles(experiment_indentifier=self.config.experiment.experiment_indentifier, delete=True)
-        self.config.experiment.experiment_dir = self.experiment_files.experiment_dir
-        self.config.experiment.experiment_name = self.experiment_name
+        self.experiment_files = ExperimentsFiles(experiment_indentifier=self.config.experiment_indentifier, delete=True)
+        self.config.experiment_dir = self.experiment_files.experiment_dir
+        self.config.experiment_name = self.experiment_name
 
     def setup_logger(self):
         """
@@ -88,10 +97,10 @@ class BasicLightningExperiment(ABC):
             accelerator="gpu",
             devices=[0],
             logger=self.logger,
-            max_epochs=self.config.model.train.epochs,
+            max_epochs=self.config.train.epochs,
             callbacks=self.callbacks,
             log_every_n_steps=1,
-            gradient_clip_val=self.config.model.train.gradient_clip_val
+            gradient_clip_val=self.config.train.gradient_clip_val
         )
         if isinstance(self.datamodule,pl.LightningDataModule):
             trainer.fit(self.model, datamodule=self.datamodule)

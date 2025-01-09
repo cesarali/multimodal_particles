@@ -31,7 +31,6 @@ data:
     hist_num_particles: null
     stats: null
   source_masks_from_target_masks: true
-  fill_target_with_noise: false
   source_name: GaussNoise
   source_path: null
   source_preprocess_continuous: null

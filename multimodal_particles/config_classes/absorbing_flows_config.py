@@ -109,6 +109,10 @@ class GeneratorsHeadConfig:
 @dataclass
 class AbsorbingConfig:
     name_str: str = "ExampleModel"
+    experiment_name:str = "absorbing_flows"
+    experiment_indentifier:str = None
+    experiment_dir:str = None
+    
     bridge: BridgeConfig = field(default_factory=BridgeConfig)
     data: JetsDataConfig = field(default_factory=JetsDataConfig)
     encoder: EncoderConfig = field(default_factory=EncoderConfig)
@@ -126,7 +130,7 @@ class AbsorbingConfig:
             bridge=BridgeConfig(**config_dict["bridge"]),
             data=JetsDataConfig(**config_dict["data"]),
             encoder=EncoderConfig(**config_dict["encoder"]),
-            generator=GeneratorsHeadConfig(**config_dict["operator"]),
+            generator=GeneratorsHeadConfig(**config_dict["generator"]),
             train=TrainingConfig(**config_dict["train"])
         )
 

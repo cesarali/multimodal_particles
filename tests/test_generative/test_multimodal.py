@@ -47,4 +47,4 @@ def test_model():
     print(state.time.shape, state.continuous.shape, state.discrete.shape, state.absorbing.shape)
 
 if __name__=="__main__":
-    test_model()
+    test_configs()

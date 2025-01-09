@@ -57,92 +57,7 @@ class OutputHeads:
     discrete: torch.Tensor = None
     absorbing: torch.Tensor = None
 
-class AbsorbtionRate(nn.Module):
-    """ Class that handles the absortion rate from the  """
-
-    def __init__(self, config:AbsorbingConfig):
-        super().__init__()
-
-    def set_up(self):
-        """"""
-        self.transformer_dim = transformer_dim
-        self.temb_dim = self.transformer_dim
-
-        self.temb_net = nn.Linear(self.temb_dim, self.temb_dim)
-
-        self.transformer_1_proj_in = nn.Linear(
-            output_dim_global + self.vocab_size_features, self.transformer_dim
-        )
-
-        #self.transformer_1_proj_in = nn.Linear(
-        #    self.egnn_net.egnn.hidden_nf + 6, self.transformer_dim
-        #)
-
-        # these are for the head that does the rate and nearest atom prediction
-        self.attn_blocks = nn.ModuleList([
-            AttnBlock(self.transformer_dim, n_heads, attn_dim_reduce=1)
-            for _ in range(n_attn_blocks)
-        ])
-
-        self.res_blocks = nn.ModuleList([
-            ResnetBlock(channels=self.transformer_dim,
-                             dropout=0, temb_channels=self.temb_dim)
-            for _ in range(n_attn_blocks)
-        ])
-
-        self.pre_rate_proj = nn.Linear(self.transformer_dim, self.transformer_dim)
-        self.post_rate_proj = nn.Linear(self.transformer_dim, self.rdim)
-
-    def forward(self,net_last_layer):
-        """ """
-        if self.detach_last_layer:
-            net_last_layer = net_last_layer.detach()
-
-        ts = ts.squeeze()
-        temb = get_timestep_embedding(ts*1000, self.temb_dim)
-        temb = self.temb_net(temb) # (B, C)
-        temb = temb.view(B, self.temb_dim, 1).repeat(1, 1, n_nodes) # (B, C, N)
-
-        #==========================================================================
-        # DATA APPEARS 
-        h = torch.cat([
-            net_last_layer,
-            target_discrete_one_hot,
-        ], dim=2)
-        # ==========================================================================
-        # self.egnn_net.egnn.hidden_nf -> self.output_dim_local
-
-        assert h.shape == (B, n_nodes, self.output_dim_local + self.vocab_size_features)
-        h = self.transformer_1_proj_in(h)
-        assert h.shape == (B, n_nodes, self.transformer_dim)
-        h = h.transpose(1,2)
-        assert h.shape == (B, self.transformer_dim, n_nodes)
-
-        for (res_block, attn_block) in zip(self.res_blocks, self.attn_blocks):
-            h = res_block(h, temb)
-            h = attn_block(h)
-
-        h = h.transpose(1, 2)
-        assert h.shape == (B, n_nodes, self.transformer_dim)
-
-        rate_emb = self.pre_rate_proj(h) # (B, N, C)
-        rate_emb = torch.mean(rate_emb, dim=1) # (B, C)
-        rate_emb = self.post_rate_proj(rate_emb) # (B, rdim)
-
-        if self.rate_use_x0_pred:
-            x0_dim_logits = rate_emb
-            rate_out = get_rate_using_x0_pred(
-                x0_dim_logits=x0_dim_logits, xt_dims=st_batch.get_dims(),
-                forward_rate=forward_rate, ts=ts, max_dim=st_batch.gs.max_num_particles
-            ).view(-1, 1) # (B, 1)
-        else:
-            x0_dim_logits = torch.zeros((B, st_batch.gs.max_num_particles), device=device)
-            f_rate_ts = forward_rate.get_rate(None, ts).view(B, 1)
-
-            # rate_out = rate_emb.exp() # (B, 1)
-            rate_out = F.softplus(rate_emb) * f_rate_ts # (B, 1)
-
-class AbsorbingEPiC(nn.Module):
+class AbsorbingGenerator(nn.Module):
     """Permutation equivariant architecture for multi-modal continuous-discrete models"""
 
     def __init__(self, config: AbsorbingConfig):
@@ -297,7 +212,7 @@ class AbsorbingFlow(L.LightningModule):
         self.config = config
         self.vocab_size = config.data.vocab_size_features
 
-        self.generator = AbsorbingEPiC(config)
+        self.generator = AbsorbingGenerator(config)
 
         self.bridge_continuous = LinearUniformBridge(config)
         self.bridge_discrete = TelegraphBridge(config)
@@ -355,10 +270,14 @@ class AbsorbingFlow(L.LightningModule):
         """cross-entropy loss for discrete state classifier"""
         logits = heads.discrete
         mask = heads.absorbing
+
+        B,num_particles,_ = logits.shape
         logits = heads.discrete.reshape(-1, self.vocab_size)
         targets = batch.target_discrete.reshape(-1).long()
         targets = targets.to(logits.device)
-        loss_ce = self.loss_discrete_fn(logits, targets) 
+        loss_ce = self.loss_discrete_fn(logits, targets)
+        loss_ce = loss_ce.reshape(B,num_particles)
+        
         return loss_ce.sum(axis=1).mean()
 
     def loss_absorbing(self, heads: OutputHeads, batch):
@@ -384,7 +303,8 @@ class AbsorbingFlow(L.LightningModule):
         heads = self.forward(state, batch)
         loss_continous = self.loss_continuous(heads, state, batch)
         loss_discrete = self.loss_discrete(heads, batch)
-        loss = loss_continous + loss_discrete
+        loss_absorbing = self.loss_absorbing(heads, batch)
+        loss = loss_continous + loss_discrete + loss_absorbing
         self.log("train_loss", loss, on_step=True, on_epoch=True)
         return loss
 
@@ -394,7 +314,8 @@ class AbsorbingFlow(L.LightningModule):
         heads = self.forward(state, batch)
         loss_continous = self.loss_continuous(heads, state, batch)
         loss_discrete = self.loss_discrete(heads, batch)
-        loss = loss_continous + loss_discrete
+        loss_absorbing = self.loss_absorbing(heads, batch)
+        loss = loss_continous + loss_discrete + loss_absorbing
         self.log("val_loss", loss, on_step=True, on_epoch=True)
         return loss
 
@@ -424,12 +345,11 @@ class AbsorbingFlow(L.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
-            self.parameters(), lr=self.config.train.optimizer.params.lr
+            self.parameters(), 
+            lr=self.config.train.lr
         )
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
-            T_max=self.config.train.scheduler.params.T_max,
-            eta_min=self.config.train.scheduler.params.eta_min,
-            last_epoch=self.config.train.scheduler.params.last_epoch,
+            **self.config.train.scheduler_params
         )
         return [optimizer], [scheduler]

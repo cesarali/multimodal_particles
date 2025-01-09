@@ -1,4 +1,4 @@
-from multimodal_particles.training.mbm_experiment import MultimodalBridgeMatchingExperiment
+from multimodal_particles.training.multimodal_experiment import MultimodalBridgeMatchingExperiment
 from multimodal_particles.utils.experiment_configs import load_config
 
 def train_mbm(config):

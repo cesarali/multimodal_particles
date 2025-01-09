@@ -1,0 +1,86 @@
+bridge:
+  absorbing: AbsorbingBridge
+  continuous: LinearUniformBridge
+  discrete: TelegraphBridge
+  gamma: 0.125
+  gamma_absorb: 0.125
+  num_timesteps: 1000
+  sigma: 0.0001
+  time_eps: 0.0001
+data:
+  batch_size: 28
+  data_split_frac:
+  - 0.8
+  - 0.2
+  - 0.0
+  dim_context_continuous: 0
+  dim_context_discrete: 0
+  dim_features_continuous: 3
+  dim_features_discrete: 1
+  max_num_particles: 109
+  min_num_particles: 0
+  num_jets: 1000
+  return_type: namedtuple
+  source_info:
+    hist_num_particles: null
+    stats: null
+  source_masks_from_target_masks: true
+  source_name: GaussNoise
+  source_path: null
+  source_preprocess_continuous: null
+  source_preprocess_discrete: tokens
+  target_info:
+    hist_num_particles: null
+    stats: null
+  target_name: AspenOpenJets
+  target_path: null
+  target_preprocess_continuous: standardize
+  target_preprocess_discrete: tokens
+  vocab_size_context: 0
+  vocab_size_features: 8
+encoder:
+  activation: SELU
+  add_discrete_head: true
+  dim_emb_context_continuous: 0
+  dim_emb_context_discrete: 0
+  dim_emb_features_continuous: 16
+  dim_emb_features_discrete: 16
+  dim_emb_time: 16
+  dim_hidden_glob: 16
+  dim_hidden_local: 16
+  dropout: 0.1
+  embedding_context_continuous: null
+  embedding_context_discrete: null
+  embedding_features_continuous: Linear
+  embedding_features_discrete: Embedding
+  embedding_time: SinusoidalPositionalEncoding
+  name: MultiModalEPiC
+  num_blocks: 2
+  skip_connection: true
+experiment_name: absorbing_flows
+generator:
+  augment_dim: 9
+  detach_last_layer: true
+  discrete_head_hidden_dim: 56
+  n_attn_blocks: 2
+  n_heads: 2
+  rate_use_x0_pred: true
+  temb_dim: 128
+  transformer_dim: 128
+name_str: ExampleModel
+train:
+  amsgrad: false
+  betas:
+  - 0.9
+  - 0.999
+  epochs: 200
+  eps: 1.0e-08
+  gradient_clip_val: 1.0
+  lr: 0.001
+  optimizer_name: AdamW
+  scheduler_name: CosineAnnealingLR
+  scheduler_params:
+    T_max: 1000
+    eta_min: 5.0e-05
+    last_epoch: -1
+  weight_decay: 5.0e-05

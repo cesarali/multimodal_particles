@@ -1,3 +1,4 @@
+import os
 import pytest
 import torch
 from multimodal_particles.models import AbsorbingFlow
@@ -5,6 +6,14 @@ from multimodal_particles.config_classes.absorbing_flows_config import Absorbing
 from multimodal_particles.data.particle_clouds.jets import JetDataclass
 from multimodal_particles.data.particle_clouds.jets_dataloader import JetsDataloaderModule
 from multimodal_particles.models.generative.bridges import AbsorbingBridge
+from multimodal_particles import test_resources_dir
+
+def test_config():
+    config_file_path = os.path.join(test_resources_dir, "configs_files", "config-absorbing-test.yaml")
+    config = AbsorbingConfig()
+    config.to_yaml(config_file_path)
+    config = AbsorbingConfig.from_yaml(config_file_path)
+
 
 def test_bridge():
     config = AbsorbingConfig()
@@ -47,8 +56,8 @@ def test_absorbing_head():
     state = model.sample_bridges(random_databatch)
     forward_head = model(state,random_databatch)
     loss_absorbing = model.loss_absorbing(forward_head,random_databatch)
-    print(loss_absorbing)
+    assert loss_absorbing is not None
 
 
 if __name__=="__main__":
-    test_absorbing_head()
+    test_config()
