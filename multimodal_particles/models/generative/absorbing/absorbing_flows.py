@@ -1,63 +1,15 @@
 import torch
 import torch.nn as nn
 import lightning as L
-from dataclasses import dataclass
-from typing import List
 from torch.nn.functional import one_hot
 from multimodal_particles.models.architectures.epic import EPiCWrapper
 from multimodal_particles.config_classes.absorbing_flows_config import AbsorbingConfig
+from multimodal_particles.models.generative.absorbing.states import AbsorbingBridgeState, OutputHeads
 from multimodal_particles.models.generative.bridges import LinearUniformBridge, TelegraphBridge, AbsorbingBridge
 from multimodal_particles.models.architectures.gsdm import AttnBlock, ResnetBlock, get_timestep_embedding
-
+from multimodal_particles.data.particle_clouds.jets_dataloader import MultimodalDatabatch
 from multimodal_particles.utils.losses import MultiHeadLoss
-
-@dataclass
-class AbsorbingBridgeState:
-    """
-    this is the data that one is requiered to 
-    evolve a process that generates
-    """
-    time: torch.Tensor = None #[B,1,1]
-    continuous: torch.Tensor = None #[B,num_particles,continuos_feature_dim]
-    discrete: torch.Tensor = None #[B,num_particles,1]
-    mask_t: torch.Tensor = None #[B,num_particles,1]
-
-    def to(self, device):
-        return AbsorbingBridgeState(
-            time=self.time.to(device) if isinstance(self.time, torch.Tensor) else None,
-            continuous=self.continuous.to(device)
-            if isinstance(self.continuous, torch.Tensor)
-            else None,
-            discrete=self.discrete.to(device)
-            if isinstance(self.discrete, torch.Tensor)
-            else None,
-            mask_t=self.mask_t.to(device)
-            if isinstance(self.mask_t, torch.Tensor)
-            else None,
-        )
-
-    @staticmethod
-    def cat(states: List["AbsorbingBridgeState"], dim=0) -> "AbsorbingBridgeState":
-        # function to concat list of states int a single state
-        def cat_attr(attr_name):
-            attrs = [getattr(s, attr_name) for s in states]
-            if all(a is None for a in attrs):
-                return None
-            attrs = [a for a in attrs if a is not None]
-            return torch.cat(attrs, dim=dim)
-
-        return AbsorbingBridgeState(
-            time=cat_attr("time"),
-            continuous=cat_attr("continuous"),
-            discrete=cat_attr("discrete"),
-            mask_t=cat_attr("absorbing"),
-        )
-
-@dataclass
-class OutputHeads:
-    continuous: torch.Tensor = None
-    discrete: torch.Tensor = None
-    absorbing: torch.Tensor = None
+from tqdm import tqdm
 
 class AbsorbingGenerator(nn.Module):
     """Permutation equivariant architecture for multi-modal continuous-discrete models"""
@@ -296,6 +248,32 @@ class AbsorbingFlow(L.LightningModule):
         else:
             return t.reshape(-1, *([1] * (x.dim() - 1)))
 
+    ###########################
+    ### Inference ###
+    ###########################
+
+    def simulate_dynamics(self, state: AbsorbingBridgeState, batch: MultimodalDatabatch) -> AbsorbingBridgeState:
+        """Generate target data from source input using trained dynamics.
+        Returns the final state of the bridge at the end of the time interval."""
+        
+        time_steps = torch.linspace(
+            0.0,
+            1.0 - self.config.bridge.time_eps,
+            self.config.bridge.num_timesteps,
+            device=self.device,
+        )  # [B]
+        delta_t = (time_steps[-1] - time_steps[0]) / (len(time_steps) - 1)  # float
+
+        # Wrap the loop with tqdm for progress bar
+        for time in tqdm(time_steps[1:], desc="Simulating dynamics", dynamic_ncols=True):
+            state.time = torch.full((len(batch[0]), 1), time.item(), device=self.device)  # [B,1]
+            heads = self.forward(state, batch)
+            state = self.bridge_absorbing.solver_step(state, heads, delta_t)
+            state = self.bridge_continuous.solver_step(state, heads, delta_t, multimodal=False)
+            state = self.bridge_discrete.solver_step(state, heads, delta_t, multimodal=False)
+
+        return state.detach().cpu()
+    
     ###########################
     ### Lightning functions ###
     ###########################

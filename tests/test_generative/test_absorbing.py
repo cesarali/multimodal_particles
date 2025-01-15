@@ -6,6 +6,7 @@ from multimodal_particles.config_classes.absorbing_flows_config import Absorbing
 from multimodal_particles.data.particle_clouds.jets import JetDataclass
 from multimodal_particles.data.particle_clouds.jets_dataloader import JetsDataloaderModule
 from multimodal_particles.models.generative.bridges import AbsorbingBridge
+from multimodal_particles.models.generative.absorbing.states import AbsorbingBridgeState
 from multimodal_particles import test_resources_dir
 
 def test_config():
@@ -13,7 +14,6 @@ def test_config():
     config = AbsorbingConfig()
     config.to_yaml(config_file_path)
     config = AbsorbingConfig.from_yaml(config_file_path)
-
 
 def test_bridge():
     config = AbsorbingConfig()
@@ -58,6 +58,27 @@ def test_absorbing_head():
     loss_absorbing = model.loss_absorbing(forward_head,random_databatch)
     assert loss_absorbing is not None
 
+def test_absorbing_dynamics():
+    config = AbsorbingConfig()
+    model = AbsorbingFlow(config)
+
+    jets = JetDataclass(config=config)
+    jets.preprocess()
+    random_databatch = JetsDataloaderModule.random_databatch(config)
+        
+    # start in the source
+    initial_state = AbsorbingBridgeState(
+            None, random_databatch.source_continuous, random_databatch.source_discrete, random_databatch.source_mask
+        )
+    
+    # one absorbing state
+    initial_state.time = torch.full((initial_state.continuous.size(0), 1), 0.01, device=random_databatch.target_continuous.device) #[B,1]
+    heads = model.forward(initial_state, random_databatch)
+    next_state = model.bridge_absorbing.solver_step(initial_state, heads, 0.01)
+    
+    # simulate dynymics
+    final_state = model.simulate_dynamics(initial_state,random_databatch)
+
 
 if __name__=="__main__":
-    test_config()
+    test_absorbing_dynamics()

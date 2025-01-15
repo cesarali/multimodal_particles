@@ -8,20 +8,24 @@ from multimodal_particles.data.transdimensional_base import GraphicalStructureBa
 from multimodal_particles.models.architectures.egnn_utils import DistributionNodes
 from multimodal_particles.data.particle_clouds.utils import sizes_to_histograms
 from multimodal_particles.data.particle_clouds.jets import JetDataclass
+from typing import NamedTuple, List
 
 from multimodal_particles.utils.tensor_operations import (
     create_and_apply_mask_2,
     create_and_apply_mask_3
 )
 
-MultimodalDatabatch = namedtuple(
-    'MultimodalDatabatch',
-    [
-        "source_continuous","source_discrete","source_mask",
-        "target_continuous","target_discrete","target_mask",
-        "context_continuous","context_discrete"
-    ]
-)
+class MultimodalDatabatch(NamedTuple):
+    source_continuous: List[float]
+    source_discrete: List[int]
+    source_mask: List[bool]
+    
+    target_continuous: List[float]
+    target_discrete: List[int]
+    target_mask: List[bool]
+    
+    context_continuous: List[float]
+    context_discrete: List[int]
 
 class MultimodalBridgeDataset(Dataset):
 
@@ -233,7 +237,7 @@ class JetsDataloaderModule:
         )
 
     @staticmethod
-    def random_databatch(config:MultimodalBridgeMatchingConfig):
+    def random_databatch(config:MultimodalBridgeMatchingConfig)->MultimodalDatabatch:
         """
         For testing this generates a random databatch with the expected 
         properties of the config, without the need of loading data and 

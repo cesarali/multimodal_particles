@@ -1,9 +1,10 @@
 import torch
-from torch.nn.functional import softmax
+from torch.nn.functional import softmax,sigmoid
 from torch.distributions import Categorical
 from dataclasses import dataclass
 from multimodal_particles.config_classes.multimodal_bridge_matching_config import MultimodalBridgeMatchingConfig
 from multimodal_particles.config_classes.absorbing_flows_config import AbsorbingConfig
+from multimodal_particles.models.generative.absorbing.states import OutputHeads,AbsorbingBridgeState
 
 class LinearUniformBridge:
     """Conditional OT Flow-Matching for continuous states.
@@ -34,10 +35,13 @@ class LinearUniformBridge:
     def diffusion(self, t):
         return 0.0
 
-    def solver_step(self, state, heads, delta_t):
+    def solver_step(self, state:AbsorbingBridgeState, heads:OutputHeads, delta_t:float, multimodal:bool = True)->AbsorbingBridgeState:
         """Euler step for ODE solver"""
         state.continuous += delta_t * heads.continuous
-        state.continuous *= heads.absorbing
+        if multimodal:
+            state.continuous *= heads.absorbing
+        else:
+            state.continuous *= state.mask_t
         return state
 
 class SchrodingerBridge:
@@ -68,12 +72,15 @@ class SchrodingerBridge:
     def diffusion(self, t):
         return self.sigma * torch.sqrt(t * (1.0 - t))
 
-    def solver_step(self, state, heads, delta_t):
+    def solver_step(self,state:AbsorbingBridgeState, heads:OutputHeads, delta_t:float, multimodal:bool = True)->AbsorbingBridgeState:
         """Euler-Maruyama step for SDE solver"""
         diffusion = self.diffusion(delta_t)
         delta_w = torch.randn_like(state.continuous)
         state.continuous += delta_t * state.continuous + diffusion * delta_w
-        state.continuous *= heads.absorbing
+        if multimodal:
+            state.discrete *= heads.absorbing
+        else:
+            state.discrete *= state.mask_t        
         return state
 
 class TelegraphBridge:
@@ -115,7 +122,6 @@ class TelegraphBridge:
         )  # get probabilities for the current state `k`
 
         # ...Telegraph process rates:
-
         S = self.vocab_size
         t, t1 = t.squeeze(), 1.0
         wt = torch.exp(-S * self.gamma * (t1 - t))
@@ -170,7 +176,7 @@ class TelegraphBridge:
         prob = 1.0 / S + w_t[:, None, None] * ((-1.0 / S) + kronecker)
         return prob
 
-    def solver_step(self, state, heads, delta_t):
+    def solver_step(self, state:AbsorbingBridgeState, heads:OutputHeads, delta_t:float, multimodal:bool = True)->AbsorbingBridgeState:
         """tau-leaping step for master equation solver"""
         rates = self.rate(t=state.time, k=state.discrete, logits=heads.discrete)
         assert (rates >= 0).all(), "Negative rates!"
@@ -188,7 +194,10 @@ class TelegraphBridge:
         state.discrete += net_jumps * jump_mask
         state.discrete = torch.clamp(state.discrete, min=0, max=self.vocab_size - 1)
         state.discrete = state.discrete.unsqueeze(-1)
-        state.discrete *= heads.absorbing
+        if multimodal:
+            state.discrete *= heads.absorbing
+        else:
+            state.discrete *= state.mask_t
         return state
 
 class AbsorbingBridge:
@@ -201,7 +210,6 @@ class AbsorbingBridge:
     - k1: discrete  target state at t=1
     - k: discrete state at time t
     """
-
     def __init__(self, config: MultimodalBridgeMatchingConfig|AbsorbingConfig):
         self.gamma_absorb = torch.tensor(config.bridge.gamma_absorb, dtype=torch.float32)  # Convert gamma to a tensor
         self.time_epsilon = config.bridge.time_eps
@@ -242,30 +250,39 @@ class AbsorbingBridge:
 
     def rate(self, t, k, logits):
         """t: (b, 1) time tensor
+        
         k: (b, n, 1) current state tensor
-        logits: (b, n, vocab_size) logits tensor
+        logits: (b, n, 1) logits tensor
         """
-        pass
+        SP = self.survival_probability(t).unsqueeze(1)
+        return SP*sigmoid(logits)
 
-    def solver_step(self, state, heads, delta_t):
-        """tau-leaping step for master equation solver"""
-        rates = self.rate(t=state.time, k=state.discrete, logits=heads.discrete)
-        assert (rates >= 0).all(), "Negative rates!"
-        state.discrete = state.discrete.squeeze(-1)
-        # max_rate = torch.max(rates, dim=2)[1]
-        all_jumps = torch.poisson(rates * delta_t).to(state.time.device)
-        jump_mask = torch.sum(all_jumps, dim=-1).type_as(state.discrete) <= 1
-        diff = (
-            torch.arange(self.vocab_size, device=state.time.device).view(
-                1, 1, self.vocab_size
-            )
-            - state.discrete[:, :, None]
+    def solver_step(self, state: AbsorbingBridgeState, heads: OutputHeads, delta_t: float) -> AbsorbingBridgeState:
+        """Simplified tau-leaping step for master equation solver."""
+        # Compute rates
+        rates = self.rate(t=state.time, k=state.mask_t, logits=heads.absorbing)  # [B, num_particles, 1]
+        rates = rates.squeeze(-1)  # Remove singleton dimension: [B, num_particles]
+
+        # Initialize transition probability
+        transition_prob = delta_t * rates  # [B, num_particles]
+
+        # Clamp probabilities to a maximum of 1
+        transition_prob = torch.clamp(transition_prob, max=1.0)
+
+        # Sample Bernoulli for mask_t == 0
+        mask_t = state.mask_t.squeeze(-1)  # [B, num_particles]
+        bernoulli_sample = torch.bernoulli(transition_prob)  # [B, num_particles]
+
+        # Update the state
+        new_mask_t = torch.where(
+            mask_t == 1,  # If mask_t is already 1
+            torch.ones_like(mask_t),  # Stay in state 1
+            bernoulli_sample  # Transition based on Bernoulli sample
         )
-        net_jumps = torch.sum(all_jumps * diff, dim=-1).type_as(state.discrete)
-        state.discrete += net_jumps * jump_mask
-        state.discrete = torch.clamp(state.discrete, min=0, max=self.vocab_size - 1)
-        state.discrete = state.discrete.unsqueeze(-1)
-        state.discrete *= heads.absorbing
+
+        # Reshape to match original dimensions
+        new_mask_t = new_mask_t.unsqueeze(-1)  # [B, num_particles, 1]
+        state.mask_t=new_mask_t.long()
         return state
 
 right_shape = lambda x: x if len(x.shape) == 3 else x[:, :, None]
